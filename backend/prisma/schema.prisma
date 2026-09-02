@@ -1,0 +1,85 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String      @id @default(uuid())
+  email        String      @unique
+  username     String      @unique
+  passwordHash String
+  aoePlayer    AoEPlayer?
+  ownedLeagues League[]    @relation("LeagueOwner")
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+}
+
+model AoEPlayer {
+  id                String           @id @default(uuid())
+  userId            String           @unique
+  profileId         String           @unique
+  steamId           String?
+  nickname          String
+  country           String?
+  currentRating     Int?
+  currentGlobalRank Int?
+  peakRating        Int?
+  wins              Int?
+  losses            Int?
+  games             Int?
+  lastSyncedAt      DateTime?
+  user              User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  leagueMemberships LeagueMember[]
+  ratingSnapshots   RatingSnapshot[]
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+}
+
+model League {
+  id          String           @id @default(uuid())
+  name        String
+  slug        String           @unique
+  description String?
+  ownerId     String
+  inviteCode  String           @unique
+  visibility  LeagueVisibility
+  owner       User             @relation("LeagueOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members     LeagueMember[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+model LeagueMember {
+  id       String    @id @default(uuid())
+  leagueId String
+  playerId String
+  league   League    @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  player   AoEPlayer @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  joinedAt DateTime  @default(now())
+
+  @@unique([leagueId, playerId])
+  @@index([leagueId])
+}
+
+model RatingSnapshot {
+  id         String    @id @default(uuid())
+  playerId   String
+  rating     Int?
+  globalRank Int?
+  wins       Int?
+  losses     Int?
+  games      Int?
+  player     AoEPlayer @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  recordedAt DateTime  @default(now())
+
+  @@index([playerId, recordedAt])
+}
+
+enum LeagueVisibility {
+  PUBLIC
+  PRIVATE
+}

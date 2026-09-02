@@ -1,0 +1,13 @@
+node_modules
+.next
+dist
+coverage
+.env
+.env.local
+*.log
+*.tsbuildinfo
+*-preview.png
+.DS_Store
+frontend/.next
+backend/dist
+backend/prisma/*.db
