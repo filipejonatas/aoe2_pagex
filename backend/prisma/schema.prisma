@@ -3,83 +3,123 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model User {
-  id           String      @id @default(uuid())
-  email        String      @unique
-  username     String      @unique
-  passwordHash String
+  id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email        String     @unique
+  username     String     @unique
+  passwordHash String     @map("password_hash")
   aoePlayer    AoEPlayer?
-  ownedLeagues League[]    @relation("LeagueOwner")
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
+  ownedLeagues League[]   @relation("LeagueOwner")
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("users")
 }
 
 model AoEPlayer {
-  id                String           @id @default(uuid())
-  userId            String           @unique
-  profileId         String           @unique
-  steamId           String?
+  id                String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId            String?          @unique @map("user_id") @db.Uuid
+  profileId         String           @unique @map("profile_id")
+  steamId           String?          @unique @map("steam_id")
   nickname          String
   country           String?
-  currentRating     Int?
-  currentGlobalRank Int?
-  peakRating        Int?
-  wins              Int?
-  losses            Int?
-  games             Int?
-  lastSyncedAt      DateTime?
-  user              User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lastSyncAttemptAt DateTime?        @map("last_sync_attempt_at") @db.Timestamptz(3)
+  nextSyncAt        DateTime?        @map("next_sync_at") @db.Timestamptz(3)
+  syncFailures      Int              @default(0) @map("sync_failures")
+  user              User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
   leagueMemberships LeagueMember[]
+  ratings           PlayerRating[]
   ratingSnapshots   RatingSnapshot[]
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
+  createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([nextSyncAt], map: "aoe_players_due_sync_idx")
+  @@index([nickname], map: "aoe_players_nickname_idx")
+  @@map("aoe_players")
+}
+
+model PlayerRating {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  playerId      String    @map("player_id") @db.Uuid
+  leaderboardId Int       @map("leaderboard_id")
+  rating        Int?
+  globalRank    Int?      @map("global_rank")
+  peakRating    Int?      @map("peak_rating")
+  wins          Int?
+  losses        Int?
+  games         Int?
+  lastMatchAt   DateTime? @map("last_match_at") @db.Timestamptz(3)
+  lastSyncedAt  DateTime  @default(now()) @map("last_synced_at") @db.Timestamptz(3)
+  player        AoEPlayer @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([playerId, leaderboardId])
+  @@index([leaderboardId, rating(sort: Desc)], map: "player_ratings_leaderboard_rating_idx")
+  @@map("player_ratings")
 }
 
 model League {
-  id          String           @id @default(uuid())
-  name        String
-  slug        String           @unique
-  description String?
-  ownerId     String
-  inviteCode  String           @unique
-  visibility  LeagueVisibility
-  owner       User             @relation("LeagueOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-  members     LeagueMember[]
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+  id            String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name          String
+  slug          String           @unique
+  description   String?
+  ownerId       String           @map("owner_id") @db.Uuid
+  inviteCode    String           @unique @map("invite_code")
+  visibility    LeagueVisibility
+  leaderboardId Int              @default(3) @map("leaderboard_id")
+  owner         User             @relation("LeagueOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members       LeagueMember[]
+  createdAt     DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([ownerId])
+  @@map("leagues")
 }
 
 model LeagueMember {
-  id       String    @id @default(uuid())
-  leagueId String
-  playerId String
+  id       String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  leagueId String    @map("league_id") @db.Uuid
+  playerId String    @map("player_id") @db.Uuid
   league   League    @relation(fields: [leagueId], references: [id], onDelete: Cascade)
   player   AoEPlayer @relation(fields: [playerId], references: [id], onDelete: Cascade)
-  joinedAt DateTime  @default(now())
+  joinedAt DateTime  @default(now()) @map("joined_at") @db.Timestamptz(3)
 
   @@unique([leagueId, playerId])
   @@index([leagueId])
+  @@index([playerId])
+  @@map("league_members")
 }
 
 model RatingSnapshot {
-  id         String    @id @default(uuid())
-  playerId   String
-  rating     Int?
-  globalRank Int?
-  wins       Int?
-  losses     Int?
-  games      Int?
-  player     AoEPlayer @relation(fields: [playerId], references: [id], onDelete: Cascade)
-  recordedAt DateTime  @default(now())
+  id            String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  playerId      String         @map("player_id") @db.Uuid
+  leaderboardId Int            @map("leaderboard_id")
+  rating        Int?
+  globalRank    Int?           @map("global_rank")
+  wins          Int?
+  losses        Int?
+  games         Int?
+  source        SnapshotSource @default(WORLDS_EDGE)
+  player        AoEPlayer      @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  recordedAt    DateTime       @default(now()) @map("recorded_at") @db.Timestamptz(3)
 
-  @@index([playerId, recordedAt])
+  @@index([playerId, leaderboardId, recordedAt(sort: Desc)], map: "rating_snapshots_history_idx")
+  @@map("rating_snapshots")
 }
 
 enum LeagueVisibility {
   PUBLIC
   PRIVATE
+
+  @@map("league_visibility")
+}
+
+enum SnapshotSource {
+  WORLDS_EDGE
+
+  @@map("snapshot_source")
 }

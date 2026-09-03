@@ -33,3 +33,5 @@ npm run build
 ```
 
 See [the product and technical specification](docs/aoe2-community-leaderboard-tech-spec.md) for domain rules and roadmap.
+
+For the hosted database connection and migration workflow, see [the Supabase setup guide](docs/supabase-setup.md).

@@ -65,20 +65,34 @@ export class LeaguesService {
   async leaderboard(slug: string) {
     const league = await this.prisma.league.findUnique({
       where: { slug },
-      include: { members: { include: { player: { include: { ratingSnapshots: { orderBy: { recordedAt: 'desc' }, take: 100 } } } } } },
+      include: {
+        members: {
+          include: {
+            player: {
+              include: {
+                ratings: true,
+                ratingSnapshots: { orderBy: { recordedAt: 'desc' }, take: 100 },
+              },
+            },
+          },
+        },
+      },
     });
     if (!league) throw new NotFoundException('League not found');
-    const leaderboard = buildLeaderboard(league.members.map((member) => ({
-      playerId: member.player.id,
-      profileId: member.player.profileId,
-      nickname: member.player.nickname,
-      country: member.player.country,
-      rating: member.player.currentRating,
-      globalRank: member.player.currentGlobalRank,
-      peakRating: member.player.peakRating,
-      joinedAt: member.joinedAt,
-      snapshots: member.player.ratingSnapshots,
-    })));
+    const leaderboard = buildLeaderboard(league.members.map((member) => {
+      const rating = member.player.ratings.find((item) => item.leaderboardId === league.leaderboardId);
+      return {
+        playerId: member.player.id,
+        profileId: member.player.profileId,
+        nickname: member.player.nickname,
+        country: member.player.country,
+        rating: rating?.rating ?? null,
+        globalRank: rating?.globalRank ?? null,
+        peakRating: rating?.peakRating ?? null,
+        joinedAt: member.joinedAt,
+        snapshots: member.player.ratingSnapshots.filter((item) => item.leaderboardId === league.leaderboardId),
+      };
+    }));
     return { league: { id: league.id, name: league.name, slug: league.slug, description: league.description, updatedAt: league.updatedAt }, leaderboard };
   }
 }

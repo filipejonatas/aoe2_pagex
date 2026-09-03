@@ -9,6 +9,7 @@
     "lint": "eslint \"src/**/*.ts\"",
     "typecheck": "tsc --noEmit",
     "test": "jest --runInBand --passWithNoTests",
+    "db:check": "node scripts/check-database.cjs",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev"
@@ -20,7 +21,6 @@
     "@nestjs/jwt": "^11.0.0",
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.0.0",
-    "@nestjs/schedule": "^6.0.0",
     "@nestjs/throttler": "^6.4.0",
     "@prisma/client": "^6.5.0",
     "bcryptjs": "^3.0.2",

@@ -1,0 +1,4 @@
+project_id = "xsirbxufklylieabbznh"
+
+[functions.sync-aoe-ratings]
+verify_jwt = true

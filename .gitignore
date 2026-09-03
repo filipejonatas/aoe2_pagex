@@ -1,13 +1,33 @@
-node_modules
-.next
-dist
-coverage
+node_modules/
+.next/
+dist/
+coverage/
+
+# Local environment files and credentials
 .env
-.env.local
+.env.*
+!.env.example
+!**/.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+credentials*.json
+service-account*.json
+
+# Local Supabase CLI state; migrations/config/functions remain versioned
+supabase/.temp/
+supabase/.branches/
+
+# Local AI/MCP configuration may contain tokens or custom headers
+.mcp.json
+.codex/
+.agents/
+
 *.log
 *.tsbuildinfo
 *-preview.png
 .DS_Store
-frontend/.next
-backend/dist
+frontend/.next/
+backend/dist/
 backend/prisma/*.db
