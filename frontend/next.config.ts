@@ -6,7 +6,7 @@ const directory = path.dirname(fileURLToPath(import.meta.url));
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  outputFileTracingRoot: path.join(directory, '..'),
+  ...(process.env.VERCEL ? {} : { outputFileTracingRoot: path.join(directory, '..') }),
 };
 
 export default nextConfig;
