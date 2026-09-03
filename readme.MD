@@ -21,6 +21,8 @@ npm run dev
 
 The web app runs at `http://localhost:3000` and the API at `http://localhost:3333/api/v1`.
 
+The interactive API documentation is available at `http://localhost:3333/docs`. The OpenAPI definition can also be consumed as JSON at `http://localhost:3333/docs-json` or YAML at `http://localhost:3333/docs-yaml`.
+
 For a frontend-only visual preview, set `NEXT_PUBLIC_DEMO_MODE=true`. Demo data is strictly opt-in and is never used when an API response is available.
 
 ## Commands
