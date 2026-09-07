@@ -31,3 +31,6 @@ supabase/.branches/
 frontend/.next/
 backend/dist/
 backend/prisma/*.db
+
+.vercel
+/.env.local

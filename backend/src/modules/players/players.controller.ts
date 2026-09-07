@@ -4,6 +4,7 @@ import {
   ApiBearerAuth,
   ApiConflictResponse,
   ApiCreatedResponse,
+  ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
@@ -22,7 +23,7 @@ export class PlayersController {
   constructor(private readonly players: PlayersService) {}
 
   @Get('search')
-  @Throttle({ default: { ttl: 60_000, limit: 15 } })
+  @Throttle({ default: { ttl: 60_000, limit: 6 } })
   @ApiOperation({ summary: 'Busca jogadores por apelido, profile ID ou Steam ID' })
   @ApiOkResponse({ description: 'Ate 10 jogadores encontrados' })
   search(@Query() query: SearchPlayersDto) { return this.players.search(query.q); }
@@ -33,6 +34,7 @@ export class PlayersController {
   @ApiOperation({ summary: 'Vincula um perfil AoE a conta autenticada' })
   @ApiCreatedResponse({ description: 'Perfil vinculado' })
   @ApiConflictResponse({ description: 'Conta ou perfil ja possui uma vinculacao' })
+  @ApiForbiddenResponse({ description: 'A identidade Steam verificada nao corresponde ao perfil' })
   @ApiNotFoundResponse({ description: 'Jogador ainda nao esta no cache' })
   @ApiUnauthorizedResponse({ description: 'Token ausente ou invalido' })
   link(@CurrentUser() user: AuthUser, @Body() dto: LinkPlayerDto) {

@@ -17,8 +17,8 @@ export type LeagueSummary = {
   name: string;
   description: string;
   memberCount: number;
-  position: number;
-  rating: number;
+  position?: number | null;
+  rating?: number | null;
 };
 
 export type PlayerProfile = {

@@ -150,7 +150,8 @@ try {
     Invoke-Gcloud secrets add-iam-policy-binding $secretName --project $ProjectId --member "serviceAccount:$runtimeIdentity" --role roles/secretmanager.secretAccessor --quiet
   }
 
-  $plainVariables = "NODE_ENV=production,FRONTEND_URL=$FrontendUrl,JWT_EXPIRES_IN=7d"
+  $backendPublicUrl = "https://$Service-$projectNumber.$Region.run.app"
+  $plainVariables = "NODE_ENV=production,FRONTEND_URL=$FrontendUrl,BACKEND_PUBLIC_URL=$backendPublicUrl,JWT_EXPIRES_IN=7d"
   $secretVariables = "DATABASE_URL=$($secretNames.DATABASE_URL):latest,DIRECT_URL=$($secretNames.DIRECT_URL):latest,JWT_SECRET=$($secretNames.JWT_SECRET):latest"
 
   Invoke-Gcloud run deploy $Service `

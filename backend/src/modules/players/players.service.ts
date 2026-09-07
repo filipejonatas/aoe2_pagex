@@ -1,37 +1,152 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
 export class PlayersService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(PlayersService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly config: ConfigService,
+  ) {}
 
   async search(query: string) {
     const normalized = query.trim();
-    const players = await this.prisma.aoEPlayer.findMany({
+    let players = await this.findCached(normalized);
+    if (!players.length) {
+      try {
+        await this.resolveAndCache(normalized);
+        players = await this.findCached(normalized);
+      } catch (error) {
+        this.logger.warn(`AoE profile lookup failed: ${error instanceof Error ? error.message : 'unknown error'}`);
+      }
+    }
+    return players.map((player) => this.toPublicPlayer(player));
+  }
+
+  private findCached(query: string) {
+    return this.prisma.aoEPlayer.findMany({
       where: {
         OR: [
-          { nickname: { contains: normalized, mode: 'insensitive' } },
-          { profileId: normalized },
-          { steamId: normalized },
+          { nickname: { contains: query, mode: 'insensitive' } },
+          { profileId: query },
+          { steamId: query },
         ],
       },
       include: { ratings: { where: { leaderboardId: 3 }, take: 1 } },
       orderBy: { updatedAt: 'desc' },
       take: 10,
     });
-    return players.map((player) => this.toPublicPlayer(player));
+  }
+
+  async resolveSteamProfile(steamId: string) {
+    if (!/^\d{17}$/.test(steamId)) return null;
+    const cached = await this.prisma.aoEPlayer.findUnique({ where: { steamId } });
+    if (cached) return cached;
+    return this.resolveAndCache(steamId);
+  }
+
+  private async resolveAndCache(identifier: string) {
+    const lookup = /^\d{17}$/.test(identifier)
+      ? { key: 'profile_names', value: `/steam/${identifier}` }
+      : /^\d+$/.test(identifier)
+        ? { key: 'profile_ids', value: identifier }
+        : { key: 'aliases', value: identifier };
+    const query = new URLSearchParams({ title: 'age2', [lookup.key]: JSON.stringify([lookup.value]) });
+    const baseUrl = this.config.get<string>('AOE_API_BASE_URL', 'https://aoe-api.worldsedgelink.com/community').replace(/\/$/, '');
+    const response = await fetch(`${baseUrl}/leaderboard/getPersonalStat?${query}`, {
+      headers: {
+        accept: 'application/json',
+        'user-agent': this.config.get<string>('AOE_API_USER_AGENT', 'AoE2PageX/1.0 (player identity resolver)'),
+      },
+      signal: AbortSignal.timeout(12_000),
+    });
+    if (!response.ok) throw new Error(`World's Edge returned HTTP ${response.status}`);
+
+    const payload = await response.json() as {
+      statGroups?: Array<{ id?: unknown; name?: unknown; members?: Array<Record<string, unknown>> }>;
+      leaderboardStats?: Array<Record<string, unknown>>;
+    };
+    const groups = Array.isArray(payload.statGroups) ? payload.statGroups : [];
+    const requestedSteamName = lookup.key === 'profile_names' ? lookup.value : null;
+    const group = groups.find((candidate) => (candidate.members ?? []).some((member) => {
+      if (requestedSteamName) return member.name === requestedSteamName;
+      if (lookup.key === 'profile_ids') return String(member.profile_id) === lookup.value;
+      return member.alias === lookup.value;
+    }));
+    const member = group?.members?.find((candidate) => {
+      if (requestedSteamName) return candidate.name === requestedSteamName;
+      if (lookup.key === 'profile_ids') return String(candidate.profile_id) === lookup.value;
+      return candidate.alias === lookup.value;
+    });
+    const profileId = this.integer(member?.profile_id);
+    const nickname = this.text(member?.alias) ?? this.text(group?.name);
+    if (profileId === null || !nickname) return null;
+
+    const platformName = this.text(member?.name);
+    const steamId = platformName?.match(/^\/steam\/(\d{17})$/)?.[1] ?? null;
+    const now = new Date();
+    const player = await this.prisma.aoEPlayer.upsert({
+      where: { profileId: String(profileId) },
+      create: {
+        profileId: String(profileId), steamId, nickname,
+        country: this.text(member?.country_code) ?? this.text(member?.country),
+        lastSyncAttemptAt: now, nextSyncAt: new Date(now.getTime() + 60 * 60 * 1_000), syncFailures: 0,
+      },
+      update: {
+        ...(steamId ? { steamId } : {}), nickname,
+        country: this.text(member?.country_code) ?? this.text(member?.country),
+        lastSyncAttemptAt: now, nextSyncAt: new Date(now.getTime() + 60 * 60 * 1_000), syncFailures: 0,
+      },
+    });
+
+    const ratings = (Array.isArray(payload.leaderboardStats) ? payload.leaderboardStats : [])
+      .filter((rating) => String(rating.statgroup_id) === String(group?.id))
+      .flatMap((rating) => {
+        const leaderboardId = this.integer(rating.leaderboard_id);
+        if (leaderboardId === null) return [];
+        const wins = this.integer(rating.wins);
+        const losses = this.integer(rating.losses);
+        const rank = this.integer(rating.rank);
+        return [{
+          playerId: player.id,
+          leaderboardId,
+          rating: this.integer(rating.rating),
+          globalRank: rank !== null && rank > 0 ? rank : null,
+          peakRating: this.integer(rating.highestrating),
+          wins,
+          losses,
+          games: wins === null || losses === null ? null : wins + losses,
+          lastMatchAt: this.date(rating.lastmatchdate),
+          lastSyncedAt: now,
+        }];
+      });
+    await this.prisma.$transaction(ratings.map((rating) => this.prisma.playerRating.upsert({
+      where: { playerId_leaderboardId: { playerId: rating.playerId, leaderboardId: rating.leaderboardId } },
+      create: rating,
+      update: rating,
+    })));
+    return player;
   }
 
   async link(userId: string, profileId: string) {
     try {
       return await this.prisma.$transaction(async (tx) => {
-        const [existingForUser, player] = await Promise.all([
+        const [user, existingForUser, player] = await Promise.all([
+          tx.user.findUniqueOrThrow({ where: { id: userId } }),
           tx.aoEPlayer.findUnique({ where: { userId } }),
           tx.aoEPlayer.findUnique({ where: { profileId } }),
         ]);
         if (existingForUser) throw new ConflictException('Your account already has an AoE profile');
         if (!player) throw new NotFoundException('Player is not cached yet');
+        if (!user.steamId || !user.steamVerifiedAt) {
+          throw new ForbiddenException('Verify your Steam identity before linking an AoE profile');
+        }
+        if (!player.steamId || player.steamId !== user.steamId) {
+          throw new ForbiddenException('The selected AoE profile does not belong to your verified Steam account');
+        }
         if (player.userId) throw new ConflictException('This AoE profile is already linked');
 
         const linked = await tx.aoEPlayer.update({
@@ -73,7 +188,7 @@ export class PlayersService {
     });
   }
 
-  private toPublicPlayer<T extends {
+  toPublicPlayer<T extends {
     id: string;
     profileId: string;
     steamId: string | null;
@@ -97,5 +212,21 @@ export class PlayersService {
       games: rating?.games ?? null,
       ...(player.leagueMemberships ? { leagueMemberships: player.leagueMemberships } : {}),
     };
+  }
+
+  private integer(value: unknown) {
+    const parsed = typeof value === 'number' ? value : Number(value);
+    return Number.isSafeInteger(parsed) ? parsed : null;
+  }
+
+  private text(value: unknown) {
+    return typeof value === 'string' && value.trim() ? value.trim() : null;
+  }
+
+  private date(value: unknown) {
+    const text = this.text(value);
+    if (!text) return null;
+    const date = new Date(text);
+    return Number.isNaN(date.getTime()) ? null : date;
   }
 }

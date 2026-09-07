@@ -13,6 +13,12 @@ select jsonb_build_object(
   ),
   'players', (select count(*) from public.aoe_players),
   'ratings', (select count(*) from public.player_ratings),
+  'directory_backfill', (select row_to_json(state) from (
+    select next_start, completed_at, updated_at
+    from public.aoe_sync_state
+    where key = 'ranked_1v1_directory'
+  ) state),
+  'verified_steam_users', (select count(*) from public.users where steam_verified_at is not null),
   'snapshots', (select count(*) from public.rating_snapshots),
   'anon_can_read_players', has_table_privilege('anon', 'public.aoe_players', 'select'),
   'service_role_can_write_players', has_table_privilege('service_role', 'public.aoe_players', 'insert'),

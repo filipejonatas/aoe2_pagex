@@ -9,6 +9,8 @@ The application uses Supabase Postgres through Prisma. Authentication remains in
 - `sync-aoe-ratings`, a Supabase Edge Function, is the only component that calls the unofficial AoE2 API.
 - Supabase Cron invokes that function every 10 minutes.
 - The function refreshes the top 200 1v1 Random Map players and refreshes linked profiles outside that range in batches of at most 10 IDs.
+- While the ranked-player directory backfill is incomplete, each execution also imports up to five pages (1,000 players), waits at least 350 ms between upstream requests, and persists its cursor in `aoe_sync_state`.
+- Directory-only imports update current ratings but do not create historical snapshots. Once the provider returns the final page, later cron runs skip the completed backfill.
 - The site serves cached rows from Postgres even when the upstream API is unavailable.
 
 Queues are intentionally not required for the first deployment. Add Supabase Queues (`pgmq`) when ingestion must fan out across many thousands of profiles or needs per-message retries and dead-letter handling.
@@ -55,6 +57,8 @@ npx supabase functions deploy sync-aoe-ratings
 ```
 
 `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are supplied to hosted Edge Functions by Supabase. The service-role key must never be sent to a browser or stored in source control.
+
+Optional `AOE_BACKFILL_PAGES_PER_RUN` and `AOE_REQUEST_INTERVAL_MS` settings control ingestion cost. Defaults are five pages per cron run and 350 ms between requests; the code caps pages at 10 and never permits an interval below 250 ms.
 
 For Cron, store `project_url`, `anon_key`, and the same `aoe_sync_secret` in Supabase Vault. The scheduled HTTP request sends the anon JWT in `Authorization` and the worker secret in `x-sync-secret`. Keep JWT verification enabled for the function.
 

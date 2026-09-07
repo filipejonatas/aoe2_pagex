@@ -6,7 +6,12 @@ import { FormEvent, useEffect, useRef, useState } from 'react';
 import { demoLeaderboard } from '@/lib/demo-data';
 import { Button } from '@/components/ui/button';
 
-type SearchResult = { profileId: string; nickname: string; rating: number | null; rank: number | null };
+type SearchResult = {
+  profileId: string;
+  nickname: string;
+  currentRating: number | null;
+  currentGlobalRank: number | null;
+};
 
 export function PlayerSearch({ compact = false }: { compact?: boolean }) {
   const [query, setQuery] = useState('');
@@ -24,7 +29,12 @@ export function PlayerSearch({ compact = false }: { compact?: boolean }) {
     controller.current = new AbortController();
     try {
       if (process.env.NEXT_PUBLIC_DEMO_MODE === 'true') {
-        const matches = demoLeaderboard.filter((player) => player.nickname.toLowerCase().includes(query.toLowerCase())).map((player) => ({ profileId: player.profileId, nickname: player.nickname, rating: player.rating, rank: player.globalRank }));
+        const matches = demoLeaderboard.filter((player) => player.nickname.toLowerCase().includes(query.toLowerCase())).map((player) => ({
+          profileId: player.profileId,
+          nickname: player.nickname,
+          currentRating: player.rating,
+          currentGlobalRank: player.globalRank,
+        }));
         setResults(matches); setStatus(matches.length ? 'results' : 'empty'); return;
       }
       const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3333/api/v1';
@@ -53,7 +63,7 @@ export function PlayerSearch({ compact = false }: { compact?: boolean }) {
             <Link key={player.profileId} href={`/player/${player.profileId}`} className="search-result">
               <span className="player-avatar">{player.nickname.slice(0, 2).toUpperCase()}</span>
               <span><strong>{player.nickname}</strong><small>Profile {player.profileId}</small></span>
-              <span className="search-result__meta"><strong>{player.rating ?? '—'}</strong><small>{player.rank ? `#${player.rank.toLocaleString()} Global` : 'Unranked'}</small></span>
+              <span className="search-result__meta"><strong>{player.currentRating ?? '—'}</strong><small>{player.currentGlobalRank ? `#${player.currentGlobalRank.toLocaleString()} Global` : 'Unranked'}</small></span>
             </Link>
           ))}
         </div>

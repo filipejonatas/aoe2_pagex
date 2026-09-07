@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, Redirect, UseGuards } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiConflictResponse,
@@ -37,4 +37,18 @@ export class AuthController {
   @ApiOkResponse({ description: 'Dados da conta e perfil AoE vinculado' })
   @ApiUnauthorizedResponse({ description: 'Token ausente ou invalido' })
   me(@CurrentUser() user: AuthUser) { return this.auth.me(user.sub); }
+
+  @Post('steam/start')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Inicia a verificacao de identidade via Steam OpenID' })
+  @ApiOkResponse({ description: 'URL oficial da Steam para autenticacao' })
+  startSteam(@CurrentUser() user: AuthUser) { return this.auth.startSteamVerification(user.sub); }
+
+  @Get('steam/callback')
+  @Redirect()
+  @ApiOperation({ summary: 'Valida o callback Steam OpenID e retorna ao onboarding' })
+  async steamCallback(@Query() query: Record<string, string | string[] | undefined>) {
+    return { url: await this.auth.steamCallbackRedirect(query), statusCode: 302 };
+  }
 }
