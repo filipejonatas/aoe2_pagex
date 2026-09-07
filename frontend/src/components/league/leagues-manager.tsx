@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { LeagueCard } from '@/components/league/league-card';
 import { demoLeagues } from '@/lib/demo-data';
 import type { LeagueSummary } from '@/types';
+import { useAuthStore } from '@/store/auth-store';
 
 type Action = 'create' | 'join' | null;
 
@@ -46,6 +47,9 @@ export function LeaguesManager() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState<{ text: string; href?: string } | null>(null);
   const [authenticated, setAuthenticated] = useState(true);
+  const hydrated = useAuthStore((state) => state.hydrated);
+  const getValidToken = useAuthStore((state) => state.getValidToken);
+  const logout = useAuthStore((state) => state.logout);
 
   const loadLeagues = useCallback(async () => {
     if (process.env.NEXT_PUBLIC_DEMO_MODE === 'true') {
@@ -54,7 +58,8 @@ export function LeaguesManager() {
       return [] as ApiLeague[];
     }
 
-    const token = localStorage.getItem('aoe-league-token');
+    if (!hydrated) return [] as ApiLeague[];
+    const token = getValidToken();
     if (!token) {
       setAuthenticated(false);
       setLoading(false);
@@ -67,7 +72,7 @@ export function LeaguesManager() {
         cache: 'no-store',
       });
       if (response.status === 401) {
-        localStorage.removeItem('aoe-league-token');
+        logout();
         setAuthenticated(false);
         return [] as ApiLeague[];
       }
@@ -85,7 +90,7 @@ export function LeaguesManager() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [getValidToken, hydrated, logout]);
 
   useEffect(() => { void loadLeagues(); }, [loadLeagues]);
 
@@ -99,7 +104,7 @@ export function LeaguesManager() {
     event.preventDefault();
     setError('');
     setNotice(null);
-    const token = localStorage.getItem('aoe-league-token');
+    const token = getValidToken();
     if (!token) { setAuthenticated(false); return; }
 
     const form = new FormData(event.currentTarget);
@@ -116,7 +121,7 @@ export function LeaguesManager() {
       });
       const body = await response.json().catch(() => ({})) as ApiLeague & ApiError;
       if (response.status === 401) {
-        localStorage.removeItem('aoe-league-token');
+        logout();
         setAuthenticated(false);
         throw new Error('Your session expired. Sign in again.');
       }
@@ -133,7 +138,7 @@ export function LeaguesManager() {
     event.preventDefault();
     setError('');
     setNotice(null);
-    const token = localStorage.getItem('aoe-league-token');
+    const token = getValidToken();
     if (!token) { setAuthenticated(false); return; }
 
     const form = new FormData(event.currentTarget);
@@ -148,7 +153,7 @@ export function LeaguesManager() {
       });
       const body = await response.json().catch(() => ({})) as ApiError;
       if (response.status === 401) {
-        localStorage.removeItem('aoe-league-token');
+        logout();
         setAuthenticated(false);
         throw new Error('Your session expired. Sign in again.');
       }

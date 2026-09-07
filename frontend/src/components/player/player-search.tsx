@@ -11,6 +11,7 @@ type SearchResult = {
   nickname: string;
   currentRating: number | null;
   currentGlobalRank: number | null;
+  teamRating?: number | null;
 };
 
 export function PlayerSearch({ compact = false }: { compact?: boolean }) {
@@ -63,7 +64,7 @@ export function PlayerSearch({ compact = false }: { compact?: boolean }) {
             <Link key={player.profileId} href={`/player/${player.profileId}`} className="search-result">
               <span className="player-avatar">{player.nickname.slice(0, 2).toUpperCase()}</span>
               <span><strong>{player.nickname}</strong><small>Profile {player.profileId}</small></span>
-              <span className="search-result__meta"><strong>{player.currentRating ?? '—'}</strong><small>{player.currentGlobalRank ? `#${player.currentGlobalRank.toLocaleString()} Global` : 'Unranked'}</small></span>
+              <span className="search-result__meta"><strong>{player.currentRating ?? '—'} 1v1</strong><small>{player.teamRating ?? '-'} Team · {player.currentGlobalRank && player.currentGlobalRank > 0 ? `#${player.currentGlobalRank.toLocaleString()}` : '-'}</small></span>
             </Link>
           ))}
         </div>

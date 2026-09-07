@@ -48,7 +48,7 @@ export class AuthService {
       where: { id: userId },
       select: {
         id: true, email: true, username: true, steamId: true, steamVerifiedAt: true, createdAt: true,
-        aoePlayer: { include: { ratings: { where: { leaderboardId: 3 }, take: 1 } } },
+        aoePlayer: { include: { ratings: { where: { leaderboardId: { in: [3, 4] } } } } },
       },
     });
     return { ...user, aoePlayer: user.aoePlayer ? this.players.toPublicPlayer(user.aoePlayer) : null };

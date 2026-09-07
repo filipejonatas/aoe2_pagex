@@ -87,7 +87,7 @@ export class LeaguesService {
         nickname: member.player.nickname,
         country: member.player.country,
         rating: rating?.rating ?? null,
-        globalRank: rating?.globalRank ?? null,
+        globalRank: rating?.globalRank && rating.globalRank > 0 ? rating.globalRank : null,
         peakRating: rating?.peakRating ?? null,
         joinedAt: member.joinedAt,
         snapshots: member.player.ratingSnapshots.filter((item) => item.leaderboardId === league.leaderboardId),

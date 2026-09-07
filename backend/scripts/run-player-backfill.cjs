@@ -3,7 +3,14 @@ require('dotenv').config({ path: require('node:path').join(__dirname, '..', '.en
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
-const maxRuns = Math.max(1, Number(process.argv[2]) || 50);
+const targets = {
+  team: { stateKey: 'ranked_team_directory', resultKey: 'team' },
+  oneVsOne: { stateKey: 'ranked_1v1_directory', resultKey: 'oneVsOne' },
+};
+const targetName = process.argv[2] || 'team';
+const target = targets[targetName];
+if (!target) throw new Error(`Unknown backfill target: ${targetName}`);
+const maxRuns = Math.max(1, Number(process.argv[3]) || 50);
 
 async function main() {
   const secrets = await prisma.$queryRaw`
@@ -21,7 +28,7 @@ async function main() {
     const [state] = await prisma.$queryRaw`
       select next_start as "nextStart", completed_at as "completedAt"
       from public.aoe_sync_state
-      where key = 'ranked_1v1_directory'
+      where key = ${target.stateKey}
     `;
     if (state?.completedAt) {
       console.log(JSON.stringify({ completed: true, nextStart: state.nextStart }));
@@ -40,8 +47,9 @@ async function main() {
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(`Backfill run ${run} failed with HTTP ${response.status}: ${JSON.stringify(result)}`);
-    console.log(JSON.stringify({ run, directory: result.directory }));
-    if (result.directory?.completed) return;
+    const directory = result.directory?.[target.resultKey];
+    console.log(JSON.stringify({ run, target: targetName, directory }));
+    if (directory?.completed) return;
   }
 
   throw new Error(`Backfill is still incomplete after ${maxRuns} runs`);

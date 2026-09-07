@@ -265,7 +265,9 @@ main { min-height: calc(100vh - 134px); }
 .link-result > span:nth-child(2) { display: grid; gap: 4px; }
 .link-result small { color: var(--text-dim); }
 .link-result .button { margin-left: auto; }
-.rating-grid--dashboard { grid-template-columns: repeat(3, 1fr); margin-bottom: 48px; }
+.rating-grid--dashboard { grid-template-columns: repeat(4, 1fr); margin-bottom: 48px; }
+.rating-grid--team { grid-template-columns: repeat(3, 1fr); }
+.team-rating-section { margin-top: 34px; }
 
 .site-footer { max-width: var(--max-width); min-height: 66px; margin: auto; padding: 20px 24px; border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; color: var(--text-dim); font-size: 10px; }
 .site-footer span { display: flex; align-items: center; gap: 6px; }

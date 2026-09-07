@@ -36,6 +36,7 @@ model AoEPlayer {
   user              User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
   leagueMemberships LeagueMember[]
   ratings           PlayerRating[]
+  ladderSyncs       PlayerLadderSync[]
   ratingSnapshots   RatingSnapshot[]
   createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt         DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -43,6 +44,18 @@ model AoEPlayer {
   @@index([nextSyncAt], map: "aoe_players_due_sync_idx")
   @@index([nickname], map: "aoe_players_nickname_idx")
   @@map("aoe_players")
+}
+
+model PlayerLadderSync {
+  playerId      String    @map("player_id") @db.Uuid
+  leaderboardId Int       @map("leaderboard_id")
+  checkedAt     DateTime  @default(now()) @map("checked_at") @db.Timestamptz(3)
+  hasData       Boolean   @default(false) @map("has_data")
+  player        AoEPlayer @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@id([playerId, leaderboardId])
+  @@index([leaderboardId, checkedAt], map: "player_ladder_sync_checked_idx")
+  @@map("player_ladder_sync")
 }
 
 model PlayerRating {

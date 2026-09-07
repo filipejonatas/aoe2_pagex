@@ -2,11 +2,13 @@
 
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useAuthStore, type SessionUser } from '@/store/auth-store';
 
 export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
   const router = useRouter();
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const setSession = useAuthStore((state) => state.setSession);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -22,8 +24,8 @@ export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
         const body = await response.json().catch(() => ({})) as { message?: string | string[] };
         throw new Error(Array.isArray(body.message) ? body.message[0] : body.message ?? 'Could not sign in');
       }
-      const body = await response.json() as { accessToken: string };
-      localStorage.setItem('aoe-league-token', body.accessToken);
+      const body = await response.json() as { accessToken: string; user: SessionUser };
+      if (!setSession(body.accessToken, body.user)) throw new Error('The server returned an invalid session.');
       router.push(mode === 'register' ? '/onboarding/aoe' : '/dashboard');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Something went wrong');

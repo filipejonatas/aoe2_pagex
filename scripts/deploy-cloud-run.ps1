@@ -151,7 +151,7 @@ try {
   }
 
   $backendPublicUrl = "https://$Service-$projectNumber.$Region.run.app"
-  $plainVariables = "NODE_ENV=production,FRONTEND_URL=$FrontendUrl,BACKEND_PUBLIC_URL=$backendPublicUrl,JWT_EXPIRES_IN=7d"
+  $plainVariables = "NODE_ENV=production,FRONTEND_URL=$FrontendUrl,BACKEND_PUBLIC_URL=$backendPublicUrl,JWT_EXPIRES_IN=3d,AOE_PROFILE_CACHE_TTL_MINUTES=1440"
   $secretVariables = "DATABASE_URL=$($secretNames.DATABASE_URL):latest,DIRECT_URL=$($secretNames.DIRECT_URL):latest,JWT_SECRET=$($secretNames.JWT_SECRET):latest"
 
   Invoke-Gcloud run deploy $Service `

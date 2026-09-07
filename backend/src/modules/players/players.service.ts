@@ -6,6 +6,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 @Injectable()
 export class PlayersService {
   private readonly logger = new Logger(PlayersService.name);
+  private readonly profileRefreshes = new Map<string, Promise<unknown>>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -17,7 +18,7 @@ export class PlayersService {
     let players = await this.findCached(normalized);
     if (!players.length) {
       try {
-        await this.resolveAndCache(normalized);
+        await this.refreshOnce(`lookup:${normalized.toLocaleLowerCase()}`, () => this.resolveAndCache(normalized));
         players = await this.findCached(normalized);
       } catch (error) {
         this.logger.warn(`AoE profile lookup failed: ${error instanceof Error ? error.message : 'unknown error'}`);
@@ -35,7 +36,7 @@ export class PlayersService {
           { steamId: query },
         ],
       },
-      include: { ratings: { where: { leaderboardId: 3 }, take: 1 } },
+      include: { ratings: { where: { leaderboardId: { in: [3, 4] } } } },
       orderBy: { updatedAt: 'desc' },
       take: 10,
     });
@@ -43,9 +44,12 @@ export class PlayersService {
 
   async resolveSteamProfile(steamId: string) {
     if (!/^\d{17}$/.test(steamId)) return null;
-    const cached = await this.prisma.aoEPlayer.findUnique({ where: { steamId } });
-    if (cached) return cached;
-    return this.resolveAndCache(steamId);
+    const cached = await this.prisma.aoEPlayer.findUnique({
+      where: { steamId },
+      include: { ladderSyncs: { where: { leaderboardId: 4 }, take: 1 } },
+    });
+    if (cached && this.isFresh(cached.ladderSyncs[0]?.checkedAt)) return cached;
+    return this.refreshOnce(`steam:${steamId}`, () => this.resolveAndCache(steamId));
   }
 
   private async resolveAndCache(identifier: string) {
@@ -123,11 +127,27 @@ export class PlayersService {
           lastSyncedAt: now,
         }];
       });
-    await this.prisma.$transaction(ratings.map((rating) => this.prisma.playerRating.upsert({
-      where: { playerId_leaderboardId: { playerId: rating.playerId, leaderboardId: rating.leaderboardId } },
-      create: rating,
-      update: rating,
-    })));
+    const trackedLeaderboards = [3, 4];
+    await this.prisma.$transaction([
+      ...ratings.map((rating) => this.prisma.playerRating.upsert({
+        where: { playerId_leaderboardId: { playerId: rating.playerId, leaderboardId: rating.leaderboardId } },
+        create: rating,
+        update: rating,
+      })),
+      ...trackedLeaderboards.map((leaderboardId) => this.prisma.playerLadderSync.upsert({
+        where: { playerId_leaderboardId: { playerId: player.id, leaderboardId } },
+        create: {
+          playerId: player.id,
+          leaderboardId,
+          checkedAt: now,
+          hasData: ratings.some((rating) => rating.leaderboardId === leaderboardId),
+        },
+        update: {
+          checkedAt: now,
+          hasData: ratings.some((rating) => rating.leaderboardId === leaderboardId),
+        },
+      })),
+    ]);
     return player;
   }
 
@@ -152,7 +172,7 @@ export class PlayersService {
         const linked = await tx.aoEPlayer.update({
           where: { id: player.id },
           data: { userId, nextSyncAt: new Date() },
-          include: { ratings: { where: { leaderboardId: 3 }, take: 1 } },
+          include: { ratings: { where: { leaderboardId: { in: [3, 4] } } } },
         });
         return this.toPublicPlayer(linked);
       });
@@ -165,15 +185,30 @@ export class PlayersService {
   }
 
   async findPublic(profileId: string) {
-    const player = await this.prisma.aoEPlayer.findUnique({
+    let player = await this.findPublicCached(profileId);
+    if (!player) throw new NotFoundException('Player not found');
+
+    const teamCheck = player.ladderSyncs[0];
+    if (!this.isFresh(teamCheck?.checkedAt)) {
+      try {
+        await this.refreshOnce(`profile:${profileId}`, () => this.resolveAndCache(profileId));
+        player = await this.findPublicCached(profileId) ?? player;
+      } catch (error) {
+        this.logger.warn(`AoE profile refresh failed for ${profileId}: ${error instanceof Error ? error.message : 'unknown error'}`);
+      }
+    }
+    return this.toPublicPlayer(player);
+  }
+
+  private findPublicCached(profileId: string) {
+    return this.prisma.aoEPlayer.findUnique({
       where: { profileId },
       include: {
-        ratings: { where: { leaderboardId: 3 }, take: 1 },
+        ratings: { where: { leaderboardId: { in: [3, 4] } } },
+        ladderSyncs: { where: { leaderboardId: 4 }, take: 1 },
         leagueMemberships: { include: { league: true } },
       },
     });
-    if (!player) throw new NotFoundException('Player not found');
-    return this.toPublicPlayer(player);
   }
 
   ratingHistory(profileId: string, range: '7d' | '30d' | '90d' | 'all') {
@@ -194,10 +229,12 @@ export class PlayersService {
     steamId: string | null;
     nickname: string;
     country: string | null;
-    ratings: Array<{ rating: number | null; globalRank: number | null; peakRating: number | null; wins: number | null; losses: number | null; games: number | null }>;
+    ratings: Array<{ leaderboardId: number; rating: number | null; globalRank: number | null; peakRating: number | null; wins: number | null; losses: number | null; games: number | null }>;
+    ladderSyncs?: Array<{ leaderboardId: number; hasData: boolean }>;
     leagueMemberships?: unknown;
   }>(player: T) {
-    const rating = player.ratings[0];
+    const rating = player.ratings.find((item) => item.leaderboardId === 3);
+    const teamRating = player.ratings.find((item) => item.leaderboardId === 4);
     return {
       id: player.id,
       profileId: player.profileId,
@@ -205,7 +242,17 @@ export class PlayersService {
       nickname: player.nickname,
       country: player.country,
       currentRating: rating?.rating ?? null,
-      currentGlobalRank: rating?.globalRank ?? null,
+      currentGlobalRank: rating?.globalRank && rating.globalRank > 0 ? rating.globalRank : null,
+      teamRating: teamRating?.rating ?? null,
+      teamGlobalRank: teamRating?.globalRank && teamRating.globalRank > 0 ? teamRating.globalRank : null,
+      teamWins: teamRating?.wins ?? null,
+      teamLosses: teamRating?.losses ?? null,
+      teamGames: teamRating?.games ?? null,
+      teamDataStatus: teamRating
+        ? 'available'
+        : player.ladderSyncs?.some((item) => item.leaderboardId === 4)
+          ? 'unavailable'
+          : 'pending',
       peakRating: rating?.peakRating ?? null,
       wins: rating?.wins ?? null,
       losses: rating?.losses ?? null,
@@ -228,5 +275,22 @@ export class PlayersService {
     if (!text) return null;
     const date = new Date(text);
     return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  private isFresh(checkedAt?: Date | null) {
+    if (!checkedAt) return false;
+    const configuredMinutes = this.config.get<number>('AOE_PROFILE_CACHE_TTL_MINUTES', 1440);
+    const minutes = Number.isFinite(Number(configuredMinutes))
+      ? Math.min(10_080, Math.max(5, Number(configuredMinutes)))
+      : 1440;
+    return checkedAt.getTime() >= Date.now() - minutes * 60_000;
+  }
+
+  private refreshOnce<T>(key: string, action: () => Promise<T>): Promise<T> {
+    const pending = this.profileRefreshes.get(key) as Promise<T> | undefined;
+    if (pending) return pending;
+    const refresh = action().finally(() => this.profileRefreshes.delete(key));
+    this.profileRefreshes.set(key, refresh);
+    return refresh;
   }
 }

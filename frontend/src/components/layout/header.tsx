@@ -4,6 +4,7 @@ import { Menu, Search, Shield, UserRound, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
+import { useAuthStore } from '@/store/auth-store';
 
 const links = [
   { href: '/leaderboard', label: 'Leaderboard' },
@@ -14,6 +15,9 @@ const links = [
 export function Header() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const hydrated = useAuthStore((state) => state.hydrated);
+  const token = useAuthStore((state) => state.token);
+  const user = useAuthStore((state) => state.user);
   return (
     <header className="site-header">
       <div className="header-inner">
@@ -26,7 +30,7 @@ export function Header() {
         </nav>
         <div className="header-actions">
           <Link href="/players" className="icon-button" aria-label="Search players"><Search size={18} /></Link>
-          <Link href="/login" className="user-link"><UserRound size={17} /><span>Sign in</span></Link>
+          <Link href={hydrated && token ? '/dashboard' : '/login'} className="user-link"><UserRound size={17} /><span>{hydrated && token ? user?.aoePlayer?.nickname ?? user?.username ?? 'Profile' : 'Sign in'}</span></Link>
           <button className="mobile-menu" aria-label="Toggle menu" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? <X /> : <Menu />}</button>
         </div>
       </div>

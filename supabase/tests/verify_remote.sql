@@ -13,11 +13,16 @@ select jsonb_build_object(
   ),
   'players', (select count(*) from public.aoe_players),
   'ratings', (select count(*) from public.player_ratings),
-  'directory_backfill', (select row_to_json(state) from (
-    select next_start, completed_at, updated_at
+  'directory_backfills', (select jsonb_object_agg(key, row_to_json(state)) from (
+    select key, next_start, completed_at, updated_at
     from public.aoe_sync_state
-    where key = 'ranked_1v1_directory'
+    where key in ('ranked_1v1_directory', 'ranked_team_directory')
   ) state),
+  'ratings_by_ladder', (select jsonb_object_agg(leaderboard_id, total) from (
+    select leaderboard_id, count(*) as total
+    from public.player_ratings
+    group by leaderboard_id
+  ) ratings),
   'verified_steam_users', (select count(*) from public.users where steam_verified_at is not null),
   'snapshots', (select count(*) from public.rating_snapshots),
   'anon_can_read_players', has_table_privilege('anon', 'public.aoe_players', 'select'),

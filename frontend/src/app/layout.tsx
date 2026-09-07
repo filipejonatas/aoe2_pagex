@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { AuthSessionManager } from '@/components/auth/auth-session-manager';
 import { Footer } from '@/components/layout/footer';
 import { Header } from '@/components/layout/header';
 import './globals.css';
@@ -9,5 +10,5 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en"><body><div className="background-pattern" /><Header /><main>{children}</main><Footer /></body></html>;
+  return <html lang="en"><body><AuthSessionManager /><div className="background-pattern" /><Header /><main>{children}</main><Footer /></body></html>;
 }

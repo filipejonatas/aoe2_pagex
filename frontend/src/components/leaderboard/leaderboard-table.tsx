@@ -14,13 +14,12 @@ function Delta({ value }: { value: number | null }) {
 }
 
 export function LeaderboardTable({ players, showFilters = true }: { players: LeaderboardPlayer[]; showFilters?: boolean }) {
-  const [period, setPeriod] = useState('Current');
   const [query, setQuery] = useState('');
   const filtered = useMemo(() => players.filter((player) => player.nickname.toLowerCase().includes(query.toLowerCase())), [players, query]);
 
   return (
     <div className="leaderboard-shell">
-      {showFilters && <LeaderboardFilters period={period} onPeriodChange={setPeriod} query={query} onQueryChange={setQuery} />}
+      {showFilters && <LeaderboardFilters query={query} onQueryChange={setQuery} />}
       {filtered.length === 0 ? <EmptyState title={query ? 'No matching players.' : undefined} body={query ? 'Try another nickname.' : undefined} /> : (
         <div className="table-wrap">
           <table className="leaderboard-table">
@@ -31,7 +30,7 @@ export function LeaderboardTable({ players, showFilters = true }: { players: Lea
                 <td><Link href={`/player/${player.profileId}`} className="player-cell"><span className="country-flag">{player.country ?? '—'}</span><span><strong>{player.nickname}</strong><small>{player.platformName}</small></span></Link></td>
                 <td className={player.position === 1 ? 'rating rating--top' : 'rating'}>{player.rating?.toLocaleString() ?? '—'}</td>
                 <td className="secondary-stat">{player.peakRating?.toLocaleString() ?? '—'}</td>
-                <td className="secondary-stat">{player.globalRank ? `#${player.globalRank.toLocaleString()}` : '—'}</td>
+                <td className="secondary-stat">{player.globalRank && player.globalRank > 0 ? `#${player.globalRank.toLocaleString()}` : '-'}</td>
                 <td><Delta value={player.delta7d} /></td>
                 <td className="month-delta"><Delta value={player.delta30d} /></td>
                 <td><Link className="row-link" href={`/player/${player.profileId}`} aria-label={`View ${player.nickname}`}><ChevronRight size={17} /></Link></td>

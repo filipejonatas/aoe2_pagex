@@ -17,6 +17,13 @@ Deno.test("joins stat groups with leaderboard stats", () => {
       wins: 20,
       losses: 10,
       lastmatchdate: "2026-09-01T12:00:00Z",
+    }, {
+      statgroup_id: 7,
+      leaderboard_id: 4,
+      rating: 1800,
+      rank: 50,
+      wins: 30,
+      losses: 20,
     }],
   });
 
@@ -33,5 +40,18 @@ Deno.test("joins stat groups with leaderboard stats", () => {
     losses: 10,
     games: 30,
     lastMatchAt: "2026-09-01T12:00:00Z",
+  }, {
+    profileId: "42",
+    steamId: "76561198000000000",
+    nickname: "Player",
+    country: "BR",
+    leaderboardId: 4,
+    rating: 1800,
+    globalRank: 50,
+    peakRating: null,
+    wins: 30,
+    losses: 20,
+    games: 50,
+    lastMatchAt: null,
   }]);
 });
