@@ -6,10 +6,13 @@ import { PlayersService } from '../players/players.service';
 
 describe('AuthService Steam OpenID', () => {
   const prisma = {
-    user: { findUniqueOrThrow: jest.fn() },
+    user: { findUniqueOrThrow: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
+    aoEPlayer: { findUnique: jest.fn(), update: jest.fn() },
+    $transaction: jest.fn(),
   };
   const jwt = {
     signAsync: jest.fn(),
+    verifyAsync: jest.fn(),
   };
   const config = {
     get: jest.fn((key: string, fallback: string) => ({
@@ -28,7 +31,10 @@ describe('AuthService Steam OpenID', () => {
     players as unknown as PlayersService,
   );
 
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    prisma.$transaction.mockImplementation(async (action: (tx: typeof prisma) => unknown) => action(prisma));
+  });
 
   it('builds a Steam-owned OpenID URL with a short-lived signed state', async () => {
     prisma.user.findUniqueOrThrow.mockResolvedValue({ id: 'user-1' });
@@ -47,6 +53,38 @@ describe('AuthService Steam OpenID', () => {
       { sub: 'user-1', purpose: 'steam-link' },
       { expiresIn: '5m' },
     );
+  });
+
+  it('keeps a pending league invite inside the signed Steam state', async () => {
+    prisma.user.findUniqueOrThrow.mockResolvedValue({ id: 'user-1' });
+    jwt.signAsync.mockResolvedValue('signed-invite-state');
+
+    await service.startSteamVerification('user-1', 'league_invite-123');
+
+    expect(jwt.signAsync).toHaveBeenCalledWith(
+      { sub: 'user-1', purpose: 'steam-link', inviteCode: 'league_invite-123' },
+      { expiresIn: '5m' },
+    );
+  });
+
+  it('restores the pending invite after Steam redirects back', async () => {
+    jwt.verifyAsync.mockResolvedValue({ sub: 'user-1', purpose: 'steam-link', inviteCode: 'league_invite-123' });
+    players.resolveSteamProfile.mockResolvedValue(null);
+    prisma.user.findUniqueOrThrow.mockResolvedValue({ id: 'user-1', steamId: null });
+    prisma.user.findUnique.mockResolvedValue(null);
+    prisma.aoEPlayer.findUnique.mockResolvedValue(null);
+    prisma.user.update.mockResolvedValue({ id: 'user-1' });
+    const verify = jest.spyOn(
+      service as unknown as { verifySteamAssertion(query: Record<string, string | string[] | undefined>, state: string): Promise<string> },
+      'verifySteamAssertion',
+    ).mockResolvedValue('76561198000000000');
+
+    const result = new URL(await service.steamCallbackRedirect({ state: 'signed-state' }));
+
+    expect(result.pathname).toBe('/onboarding/aoe');
+    expect(result.searchParams.get('invite')).toBe('league_invite-123');
+    expect(result.searchParams.get('steam')).toBe('verified');
+    verify.mockRestore();
   });
 
   it('accepts only assertions validated directly by Steam', async () => {

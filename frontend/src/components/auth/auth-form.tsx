@@ -3,12 +3,14 @@
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore, type SessionUser } from '@/store/auth-store';
+import { getCurrentUser, joinLeagueInvite, normalizeInviteCode, withInvite } from '@/lib/invite-flow';
 
-export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
+export function AuthForm({ mode, inviteCode }: { mode: 'login' | 'register'; inviteCode?: string | null }) {
   const router = useRouter();
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const setSession = useAuthStore((state) => state.setSession);
+  const setUser = useAuthStore((state) => state.setUser);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -26,7 +28,25 @@ export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
       }
       const body = await response.json() as { accessToken: string; user: SessionUser };
       if (!setSession(body.accessToken, body.user)) throw new Error('The server returned an invalid session.');
-      router.push(mode === 'register' ? '/onboarding/aoe' : '/dashboard');
+      const pendingInvite = normalizeInviteCode(inviteCode);
+      if (!pendingInvite) {
+        router.push(mode === 'register' ? '/onboarding/aoe' : '/dashboard');
+        return;
+      }
+
+      const currentUser = await getCurrentUser(body.accessToken);
+      setUser(currentUser);
+      if (!currentUser.aoePlayer) {
+        router.push(withInvite('/onboarding/aoe', pendingInvite));
+        return;
+      }
+
+      try {
+        const membership = await joinLeagueInvite(body.accessToken, pendingInvite);
+        router.push(`/league/${membership.league.slug}?joined=${membership.joined ? '1' : 'existing'}`);
+      } catch {
+        router.push(withInvite('/leagues', pendingInvite));
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Something went wrong');
     } finally { setLoading(false); }

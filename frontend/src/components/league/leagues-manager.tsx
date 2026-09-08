@@ -1,12 +1,14 @@
 'use client';
 
-import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { CheckCircle2, Plus, TicketCheck, X } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { LeagueCard } from '@/components/league/league-card';
 import { demoLeagues } from '@/lib/demo-data';
 import type { LeagueSummary } from '@/types';
 import { useAuthStore } from '@/store/auth-store';
+import { getCurrentUser, joinLeagueInvite, normalizeInviteCode, withInvite } from '@/lib/invite-flow';
 
 type Action = 'create' | 'join' | null;
 
@@ -47,6 +49,7 @@ function toSummary(league: ApiLeague): LeagueSummary {
 }
 
 export function LeaguesManager() {
+  const router = useRouter();
   const [leagues, setLeagues] = useState<LeagueSummary[]>([]);
   const [action, setAction] = useState<Action>(null);
   const [loading, setLoading] = useState(true);
@@ -55,9 +58,11 @@ export function LeaguesManager() {
   const [notice, setNotice] = useState<{ text: string; href?: string } | null>(null);
   const [pendingInviteCode, setPendingInviteCode] = useState('');
   const [authenticated, setAuthenticated] = useState(true);
+  const autoJoinStarted = useRef(false);
   const hydrated = useAuthStore((state) => state.hydrated);
   const getValidToken = useAuthStore((state) => state.getValidToken);
   const logout = useAuthStore((state) => state.logout);
+  const setUser = useAuthStore((state) => state.setUser);
 
   const loadLeagues = useCallback(async () => {
     if (process.env.NEXT_PUBLIC_DEMO_MODE === 'true') {
@@ -110,6 +115,32 @@ export function LeaguesManager() {
       setAction('join');
     }
   }, [hydrated]);
+
+  useEffect(() => {
+    const inviteCode = normalizeInviteCode(pendingInviteCode);
+    if (!hydrated || !inviteCode || autoJoinStarted.current) return;
+    const token = getValidToken();
+    if (!token) {
+      setAuthenticated(false);
+      return;
+    }
+
+    autoJoinStarted.current = true;
+    setSubmitting(true);
+    void getCurrentUser(token).then(async (currentUser) => {
+      setUser(currentUser);
+      if (!currentUser.aoePlayer) {
+        router.replace(withInvite('/onboarding/aoe', inviteCode));
+        return;
+      }
+      const membership = await joinLeagueInvite(token, inviteCode);
+      router.replace(`/league/${membership.league.slug}?joined=${membership.joined ? '1' : 'existing'}`);
+    }).catch((cause) => {
+      setError(cause instanceof Error ? cause.message : 'Could not complete the league invitation.');
+      setSubmitting(false);
+      autoJoinStarted.current = false;
+    });
+  }, [getValidToken, hydrated, pendingInviteCode, router, setUser]);
 
   function openAction(next: Exclude<Action, null>) {
     setAction(next);
@@ -206,7 +237,7 @@ export function LeaguesManager() {
         </div>
       </div>
 
-      {!authenticated && <div className="league-feedback card"><p>Sign in and link your AoE profile before creating or joining a league.</p><Link href="/login" className="button button--primary">Sign in</Link></div>}
+      {!authenticated && <div className="league-feedback card"><p>Sign in and link your AoE profile before creating or joining a league.</p><Link href={withInvite('/login', pendingInviteCode)} className="button button--primary">Sign in</Link></div>}
 
       {action && authenticated && (
         <section className="league-action-panel card" aria-labelledby={`${action}-league-title`}>

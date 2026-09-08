@@ -71,12 +71,24 @@ export class LeaguesService {
   }
 
   async joinByCode(userId: string, inviteCode: string) {
-    const league = await this.prisma.league.findUnique({
+    const [league, player] = await Promise.all([this.prisma.league.findUnique({
       where: { inviteCode: inviteCode.trim() },
+      select: { id: true, slug: true, name: true },
+    }), this.prisma.aoEPlayer.findUnique({
+      where: { userId },
       select: { id: true },
-    });
+    })]);
     if (!league) throw new NotFoundException('Invalid invite');
-    return this.addMember(userId, league.id);
+    if (!player) throw new ConflictException('Link an AoE profile before joining a league');
+
+    const key = { leagueId_playerId: { leagueId: league.id, playerId: player.id } };
+    const existing = await this.prisma.leagueMember.findUnique({ where: key, select: { id: true } });
+    await this.prisma.leagueMember.upsert({
+      where: key,
+      create: { leagueId: league.id, playerId: player.id },
+      update: {},
+    });
+    return { league, joined: !existing };
   }
 
   async join(userId: string, leagueId: string, inviteCode: string) {

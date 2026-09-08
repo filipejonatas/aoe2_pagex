@@ -10,7 +10,7 @@ import {
 } from '@nestjs/swagger';
 import { AuthUser, CurrentUser } from '../../common/current-user.decorator';
 import { AuthService } from './auth.service';
-import { LoginDto, RegisterDto } from './dto/auth.dto';
+import { LoginDto, RegisterDto, SteamStartDto } from './dto/auth.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
 
 @ApiTags('Auth')
@@ -43,7 +43,9 @@ export class AuthController {
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Inicia a verificacao de identidade via Steam OpenID' })
   @ApiOkResponse({ description: 'URL oficial da Steam para autenticacao' })
-  startSteam(@CurrentUser() user: AuthUser) { return this.auth.startSteamVerification(user.sub); }
+  startSteam(@CurrentUser() user: AuthUser, @Body() dto: SteamStartDto) {
+    return this.auth.startSteamVerification(user.sub, dto.inviteCode);
+  }
 
   @Get('steam/callback')
   @Redirect()

@@ -27,7 +27,7 @@ describe('LeaguesService security', () => {
   const prisma = {
     league: { findUnique: jest.fn(), findMany: jest.fn() },
     aoEPlayer: { findUnique: jest.fn() },
-    leagueMember: { create: jest.fn() },
+    leagueMember: { create: jest.fn(), findUnique: jest.fn(), upsert: jest.fn() },
   };
   const service = new LeaguesService(prisma as unknown as PrismaService);
 
@@ -54,5 +54,20 @@ describe('LeaguesService security', () => {
     expect(result[0]).toMatchObject({ isOwner: true, inviteCode: 'super-secret-invite' });
     expect(result[1]).toMatchObject({ isOwner: false });
     expect(result[1]).not.toHaveProperty('inviteCode');
+  });
+
+  it('accepts an invite idempotently and returns the destination league', async () => {
+    prisma.league.findUnique.mockResolvedValue({ id: 'league-id', slug: 'private-league-a1b2', name: 'Private League' });
+    prisma.aoEPlayer.findUnique.mockResolvedValue({ id: 'player-id' });
+    prisma.leagueMember.findUnique.mockResolvedValue({ id: 'membership-id' });
+    prisma.leagueMember.upsert.mockResolvedValue({ id: 'membership-id' });
+
+    await expect(service.joinByCode('user-id', 'super-secret-invite')).resolves.toEqual({
+      league: { id: 'league-id', slug: 'private-league-a1b2', name: 'Private League' },
+      joined: false,
+    });
+    expect(prisma.leagueMember.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { leagueId_playerId: { leagueId: 'league-id', playerId: 'player-id' } },
+    }));
   });
 });

@@ -54,10 +54,10 @@ export class AuthService {
     return { ...user, aoePlayer: user.aoePlayer ? this.players.toPublicPlayer(user.aoePlayer) : null };
   }
 
-  async startSteamVerification(userId: string) {
+  async startSteamVerification(userId: string, inviteCode?: string) {
     await this.prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { id: true } });
     const state = await this.jwt.signAsync(
-      { sub: userId, purpose: 'steam-link' },
+      { sub: userId, purpose: 'steam-link', ...(inviteCode ? { inviteCode } : {}) },
       { expiresIn: '5m' },
     );
     const returnTo = this.steamReturnTo(state);
@@ -78,8 +78,9 @@ export class AuthService {
     try {
       const state = typeof query.state === 'string' ? query.state : '';
       if (!state) throw new BadRequestException('Steam verification state is missing');
-      const payload = await this.jwt.verifyAsync<{ sub: string; purpose: string }>(state);
+      const payload = await this.jwt.verifyAsync<{ sub: string; purpose: string; inviteCode?: string }>(state);
       if (payload.purpose !== 'steam-link' || !payload.sub) throw new UnauthorizedException('Invalid Steam verification state');
+      if (payload.inviteCode) redirect.searchParams.set('invite', payload.inviteCode);
 
       const steamId = await this.verifySteamAssertion(query, state);
       try {
