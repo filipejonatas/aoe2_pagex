@@ -19,6 +19,10 @@ export type LeagueSummary = {
   memberCount: number;
   position?: number | null;
   rating?: number | null;
+  visibility?: 'PUBLIC' | 'PRIVATE';
+  leaderboardId?: 3 | 4;
+  isOwner?: boolean;
+  inviteCode?: string;
 };
 
 export type PlayerProfile = {

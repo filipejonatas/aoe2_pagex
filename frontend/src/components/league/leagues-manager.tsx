@@ -17,6 +17,9 @@ type ApiLeague = {
   description: string | null;
   inviteCode?: string;
   _count?: { members: number };
+  visibility?: 'PUBLIC' | 'PRIVATE';
+  leaderboardId?: 3 | 4;
+  isOwner?: boolean;
 };
 
 type ApiError = { message?: string | string[] };
@@ -36,6 +39,10 @@ function toSummary(league: ApiLeague): LeagueSummary {
     memberCount: league._count?.members ?? 1,
     position: null,
     rating: null,
+    visibility: league.visibility,
+    leaderboardId: league.leaderboardId ?? 3,
+    isOwner: league.isOwner,
+    inviteCode: league.inviteCode,
   };
 }
 
@@ -46,6 +53,7 @@ export function LeaguesManager() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState<{ text: string; href?: string } | null>(null);
+  const [pendingInviteCode, setPendingInviteCode] = useState('');
   const [authenticated, setAuthenticated] = useState(true);
   const hydrated = useAuthStore((state) => state.hydrated);
   const getValidToken = useAuthStore((state) => state.getValidToken);
@@ -94,6 +102,15 @@ export function LeaguesManager() {
 
   useEffect(() => { void loadLeagues(); }, [loadLeagues]);
 
+  useEffect(() => {
+    if (!hydrated || typeof window === 'undefined') return;
+    const inviteCode = new URLSearchParams(window.location.search).get('invite');
+    if (inviteCode) {
+      setPendingInviteCode(inviteCode);
+      setAction('join');
+    }
+  }, [hydrated]);
+
   function openAction(next: Exclude<Action, null>) {
     setAction(next);
     setError('');
@@ -117,6 +134,7 @@ export function LeaguesManager() {
           name: form.get('name'),
           description: form.get('description') || undefined,
           visibility: form.get('visibility'),
+          leaderboardId: Number(form.get('leaderboardId') ?? 3),
         }),
       });
       const body = await response.json().catch(() => ({})) as ApiLeague & ApiError;
@@ -142,11 +160,10 @@ export function LeaguesManager() {
     if (!token) { setAuthenticated(false); return; }
 
     const form = new FormData(event.currentTarget);
-    const leagueId = String(form.get('leagueId') ?? '').trim();
     const inviteCode = String(form.get('inviteCode') ?? '').trim();
     setSubmitting(true);
     try {
-      const response = await fetch(`${baseUrl}/leagues/${encodeURIComponent(leagueId)}/join`, {
+      const response = await fetch(`${baseUrl}/leagues/join`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ inviteCode }),
@@ -159,12 +176,24 @@ export function LeaguesManager() {
       }
       if (!response.ok) throw new Error(messageFrom(body, 'Could not join the league.'));
       const updated = await loadLeagues();
-      const joined = updated.find((league) => league.id === leagueId);
+      const joined = updated.find((league) => !leagues.some((current) => current.id === league.id));
       setAction(null);
       setNotice({ text: 'You joined the league successfully.', href: joined ? `/league/${joined.slug}` : undefined });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not join the league.');
     } finally { setSubmitting(false); }
+  }
+
+  async function copyInvite(league: LeagueSummary) {
+    if (!league.inviteCode) return;
+    try {
+      const inviteUrl = `${window.location.origin}/leagues?invite=${encodeURIComponent(league.inviteCode)}`;
+      await navigator.clipboard.writeText(inviteUrl);
+      setError('');
+      setNotice({ text: 'Invite link copied. Only people with this link can join.' });
+    } catch {
+      setError('Could not copy the invite link. Please try again.');
+    }
   }
 
   return (
@@ -190,13 +219,13 @@ export function LeaguesManager() {
               <label>League name<input name="name" minLength={3} maxLength={80} required placeholder="Liga dos Amigos" /></label>
               <label className="league-action-form__wide">Description<textarea name="description" maxLength={280} rows={3} placeholder="What brings this community together?" /></label>
               <label>Visibility<select name="visibility" defaultValue="PRIVATE"><option value="PRIVATE">Private</option><option value="PUBLIC">Public</option></select></label>
+              <label>Default leaderboard<select name="leaderboardId" defaultValue="3"><option value="3">1v1 Random Map</option><option value="4">Team Random Map</option></select></label>
               <button className="button button--primary" type="submit" disabled={submitting}>{submitting ? 'Creating...' : 'Create league'}</button>
             </form>
           ) : (
             <form className="league-action-form" onSubmit={joinLeague}>
-              <p className="form-help">The current API requires both values from the league owner.</p>
-              <label>League ID<input name="leagueId" required placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" /></label>
-              <label>Invite code<input name="inviteCode" minLength={6} required autoCapitalize="characters" placeholder="Invitation code" /></label>
+              <p className="form-help">Paste the invite code or open the link shared by the league owner.</p>
+              <label className="league-action-form__wide">Invite code<input name="inviteCode" minLength={6} required defaultValue={pendingInviteCode} placeholder="Invitation code" /></label>
               <button className="button button--primary" type="submit" disabled={submitting}>{submitting ? 'Joining...' : 'Join league'}</button>
             </form>
           )}
@@ -207,7 +236,7 @@ export function LeaguesManager() {
       {notice && <div className="league-alert league-alert--success" role="status"><CheckCircle2 size={17} /><span>{notice.text}</span>{notice.href && <Link href={notice.href}>View league</Link>}</div>}
 
       {loading ? <div className="large-empty card"><p>Loading your leagues...</p></div> : leagues.length ? (
-        <div className="league-grid">{leagues.map((league) => <LeagueCard key={league.id} league={league} />)}<button className="new-league-card" onClick={() => openAction('create')}><Plus size={20} /><strong>Create a new league</strong><span>Bring your community together.</span></button></div>
+        <div className="league-grid">{leagues.map((league) => <LeagueCard key={league.id} league={league} onCopyInvite={copyInvite} />)}<button className="new-league-card" onClick={() => openAction('create')}><Plus size={20} /><strong>Create a new league</strong><span>Bring your community together.</span></button></div>
       ) : (
         <div className="large-empty card"><span className="league-emblem"><Plus size={21} /></span><h2>Your league hall is empty</h2><p>Create a league or join one with an invite code.</p><button className="button button--primary" onClick={() => openAction('create')}>Create league</button></div>
       )}

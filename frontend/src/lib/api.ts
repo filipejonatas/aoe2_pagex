@@ -2,9 +2,29 @@ import type { LeaderboardPlayer } from '@/types';
 
 const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3333/api/v1';
 
-export async function getLeaderboard(slug: string): Promise<{ league: { name: string; description?: string; updatedAt?: string }; leaderboard: LeaderboardPlayer[] } | null> {
+export type LeagueLeaderboardResponse = {
+  league: {
+    id: string;
+    name: string;
+    slug: string;
+    description?: string | null;
+    visibility: 'PUBLIC' | 'PRIVATE';
+    defaultLeaderboardId: 3 | 4;
+    leaderboardId: 3 | 4;
+    updatedAt?: string;
+    isOwner: boolean;
+    inviteCode?: string;
+  };
+  leaderboard: LeaderboardPlayer[];
+};
+
+export async function getLeaderboard(slug: string, leaderboardId?: 3 | 4, token?: string | null): Promise<LeagueLeaderboardResponse | null> {
   try {
-    const response = await fetch(`${baseUrl}/leagues/${slug}/leaderboard`, { next: { revalidate: 60 } });
+    const query = leaderboardId ? `?leaderboardId=${leaderboardId}` : '';
+    const response = await fetch(`${baseUrl}/leagues/${slug}/leaderboard${query}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      cache: 'no-store',
+    });
     if (!response.ok) return null;
     return response.json();
   } catch {

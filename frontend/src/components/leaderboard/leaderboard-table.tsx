@@ -13,13 +13,13 @@ function Delta({ value }: { value: number | null }) {
   return <span className={`delta ${value > 0 ? 'delta--up' : value < 0 ? 'delta--down' : 'delta--neutral'}`}>{value > 0 ? '+' : ''}{value}</span>;
 }
 
-export function LeaderboardTable({ players, showFilters = true }: { players: LeaderboardPlayer[]; showFilters?: boolean }) {
+export function LeaderboardTable({ players, showFilters = true, ladderLabel }: { players: LeaderboardPlayer[]; showFilters?: boolean; ladderLabel?: string }) {
   const [query, setQuery] = useState('');
   const filtered = useMemo(() => players.filter((player) => player.nickname.toLowerCase().includes(query.toLowerCase())), [players, query]);
 
   return (
     <div className="leaderboard-shell">
-      {showFilters && <LeaderboardFilters query={query} onQueryChange={setQuery} />}
+      {showFilters && <LeaderboardFilters query={query} onQueryChange={setQuery} ladderLabel={ladderLabel} />}
       {filtered.length === 0 ? <EmptyState title={query ? 'No matching players.' : undefined} body={query ? 'Try another nickname.' : undefined} /> : (
         <div className="table-wrap">
           <table className="leaderboard-table">

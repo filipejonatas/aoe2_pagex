@@ -18,26 +18,65 @@ export class LeaguesService {
         ...dto,
         ownerId,
         slug: `${slugBase}-${suffix}`,
-        inviteCode: randomBytes(5).toString('hex').toUpperCase(),
+        inviteCode: randomBytes(16).toString('base64url'),
         members: { create: { playerId: player.id } },
       },
     });
   }
 
   async mine(userId: string) {
-    return this.prisma.league.findMany({
+    const leagues = await this.prisma.league.findMany({
       where: { members: { some: { player: { userId } } } },
       include: { _count: { select: { members: true } }, members: { where: { player: { userId } }, include: { player: true } } },
       orderBy: { updatedAt: 'desc' },
     });
+    return leagues.map((league) => ({
+      id: league.id,
+      slug: league.slug,
+      name: league.name,
+      description: league.description,
+      visibility: league.visibility,
+      leaderboardId: league.leaderboardId,
+      createdAt: league.createdAt,
+      updatedAt: league.updatedAt,
+      _count: league._count,
+      isOwner: league.ownerId === userId,
+      ...(league.ownerId === userId ? { inviteCode: league.inviteCode } : {}),
+    }));
   }
 
-  async findBySlug(slug: string) {
+  async findBySlug(slug: string, viewerId?: string) {
     const league = await this.prisma.league.findUnique({
-      where: { slug }, include: { owner: { select: { username: true } }, _count: { select: { members: true } } },
+      where: { slug },
+      include: {
+        owner: { select: { username: true } },
+        _count: { select: { members: true } },
+        members: { select: { player: { select: { userId: true } } } },
+      },
     });
     if (!league) throw new NotFoundException('League not found');
-    return league;
+    this.ensureCanView(league, viewerId);
+    return {
+      id: league.id,
+      slug: league.slug,
+      name: league.name,
+      description: league.description,
+      visibility: league.visibility,
+      leaderboardId: league.leaderboardId,
+      owner: league.owner,
+      memberCount: league._count.members,
+      createdAt: league.createdAt,
+      updatedAt: league.updatedAt,
+    };
+  }
+
+  async joinByCode(userId: string, inviteCode: string) {
+    const league = await this.prisma.league.findUnique({
+      where: { inviteCode: inviteCode.trim() },
+      select: { id: true },
+    });
+    if (!league) throw new NotFoundException('Invalid invite');
+    return this.addMember(userId, league.id);
   }
 
   async join(userId: string, leagueId: string, inviteCode: string) {
@@ -47,9 +86,7 @@ export class LeaguesService {
     ]);
     if (!league || league.inviteCode !== inviteCode.toUpperCase()) throw new NotFoundException('Invalid invite');
     if (!player) throw new ConflictException('Link an AoE profile before joining a league');
-    return this.prisma.leagueMember.create({ data: { leagueId, playerId: player.id } }).catch(() => {
-      throw new ConflictException('Player is already a member');
-    });
+    return this.addMember(userId, league.id, player.id);
   }
 
   async leave(userId: string, leagueId: string) {
@@ -62,7 +99,7 @@ export class LeaguesService {
     } } });
   }
 
-  async leaderboard(slug: string) {
+  async leaderboard(slug: string, leaderboardId?: number, viewerId?: string) {
     const league = await this.prisma.league.findUnique({
       where: { slug },
       include: {
@@ -79,8 +116,10 @@ export class LeaguesService {
       },
     });
     if (!league) throw new NotFoundException('League not found');
+    this.ensureCanView(league, viewerId);
+    const selectedLeaderboardId = leaderboardId ?? league.leaderboardId;
     const leaderboard = buildLeaderboard(league.members.map((member) => {
-      const rating = member.player.ratings.find((item) => item.leaderboardId === league.leaderboardId);
+      const rating = member.player.ratings.find((item) => item.leaderboardId === selectedLeaderboardId);
       return {
         playerId: member.player.id,
         profileId: member.player.profileId,
@@ -90,9 +129,45 @@ export class LeaguesService {
         globalRank: rating?.globalRank && rating.globalRank > 0 ? rating.globalRank : null,
         peakRating: rating?.peakRating ?? null,
         joinedAt: member.joinedAt,
-        snapshots: member.player.ratingSnapshots.filter((item) => item.leaderboardId === league.leaderboardId),
+        snapshots: member.player.ratingSnapshots.filter((item) => item.leaderboardId === selectedLeaderboardId),
       };
     }));
-    return { league: { id: league.id, name: league.name, slug: league.slug, description: league.description, updatedAt: league.updatedAt }, leaderboard };
+    return {
+      league: {
+        id: league.id,
+        name: league.name,
+        slug: league.slug,
+        description: league.description,
+        visibility: league.visibility,
+        defaultLeaderboardId: league.leaderboardId,
+        leaderboardId: selectedLeaderboardId,
+        updatedAt: league.updatedAt,
+        isOwner: league.ownerId === viewerId,
+        ...(league.ownerId === viewerId ? { inviteCode: league.inviteCode } : {}),
+      },
+      leaderboard,
+    };
+  }
+
+  private async addMember(userId: string, leagueId: string, knownPlayerId?: string) {
+    const playerId = knownPlayerId ?? (await this.prisma.aoEPlayer.findUnique({
+      where: { userId },
+      select: { id: true },
+    }))?.id;
+    if (!playerId) throw new ConflictException('Link an AoE profile before joining a league');
+    return this.prisma.leagueMember.create({ data: { leagueId, playerId } }).catch(() => {
+      throw new ConflictException('Player is already a member');
+    });
+  }
+
+  private ensureCanView(
+    league: { visibility: 'PUBLIC' | 'PRIVATE'; ownerId: string; members: Array<{ player: { userId: string | null } }> },
+    viewerId?: string,
+  ) {
+    if (league.visibility === 'PUBLIC') return;
+    const isMember = viewerId && (
+      league.ownerId === viewerId || league.members.some((member) => member.player.userId === viewerId)
+    );
+    if (!isMember) throw new NotFoundException('League not found');
   }
 }

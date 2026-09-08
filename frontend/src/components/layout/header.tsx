@@ -1,6 +1,6 @@
 'use client';
 
-import { Menu, Search, Shield, UserRound, X } from 'lucide-react';
+import { Menu, Search, UserRound, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
@@ -22,7 +22,6 @@ export function Header() {
     <header className="site-header">
       <div className="header-inner">
         <Link href="/" className="brand" aria-label="AoE League home">
-          <span className="brand__mark"><Shield size={19} strokeWidth={1.8} /></span>
           <span className="brand__name">AoE <em>League</em></span>
         </Link>
         <nav className={`main-nav ${open ? 'main-nav--open' : ''}`} aria-label="Main navigation">

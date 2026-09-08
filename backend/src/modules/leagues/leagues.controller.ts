@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiConflictResponse,
@@ -13,7 +13,8 @@ import {
 } from '@nestjs/swagger';
 import { AuthUser, CurrentUser } from '../../common/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { CreateLeagueDto, JoinLeagueDto } from './dto/leagues.dto';
+import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
+import { CreateLeagueDto, JoinLeagueDto, LeagueLeaderboardQueryDto } from './dto/leagues.dto';
 import { LeaguesService } from './leagues.service';
 
 @ApiTags('Leagues')
@@ -36,19 +37,37 @@ export class LeaguesController {
   @ApiUnauthorizedResponse({ description: 'Token ausente ou invalido' })
   mine(@CurrentUser() user: AuthUser) { return this.leagues.mine(user.sub); }
 
-  @Get(':slug/leaderboard')
+  @Get(':slug/leaderboard') @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({ summary: 'Consulta o leaderboard de uma liga' })
   @ApiParam({ name: 'slug', example: 'liga-dos-amigos-a1b2' })
   @ApiOkResponse({ description: 'Liga e leaderboard calculado' })
   @ApiNotFoundResponse({ description: 'Liga nao encontrada' })
-  leaderboard(@Param('slug') slug: string) { return this.leagues.leaderboard(slug); }
+  leaderboard(
+    @CurrentUser() user: AuthUser | null,
+    @Param('slug') slug: string,
+    @Query() query: LeagueLeaderboardQueryDto,
+  ) {
+    return this.leagues.leaderboard(slug, query.leaderboardId, user?.sub);
+  }
 
-  @Get(':slug')
+  @Get(':slug') @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({ summary: 'Consulta uma liga pelo slug' })
   @ApiParam({ name: 'slug', example: 'liga-dos-amigos-a1b2' })
   @ApiOkResponse({ description: 'Dados publicos da liga' })
   @ApiNotFoundResponse({ description: 'Liga nao encontrada' })
-  get(@Param('slug') slug: string) { return this.leagues.findBySlug(slug); }
+  get(@CurrentUser() user: AuthUser | null, @Param('slug') slug: string) {
+    return this.leagues.findBySlug(slug, user?.sub);
+  }
+
+  @Post('join') @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Entra em uma liga usando apenas o codigo de convite' })
+  @ApiCreatedResponse({ description: 'Participacao criada' })
+  @ApiNotFoundResponse({ description: 'Convite invalido' })
+  @ApiConflictResponse({ description: 'Perfil nao vinculado ou jogador ja participa' })
+  joinByCode(@CurrentUser() user: AuthUser, @Body() dto: JoinLeagueDto) {
+    return this.leagues.joinByCode(user.sub, dto.inviteCode);
+  }
 
   @Post(':leagueId/join') @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('access-token')

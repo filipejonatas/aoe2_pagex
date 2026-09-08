@@ -13,6 +13,7 @@
     "backfill:players": "node scripts/run-player-backfill.cjs oneVsOne",
     "backfill:team": "node scripts/run-player-backfill.cjs team",
     "steam:check": "node scripts/check-steam-openid.cjs",
+    "security:leagues": "node scripts/check-league-security.cjs",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev"
