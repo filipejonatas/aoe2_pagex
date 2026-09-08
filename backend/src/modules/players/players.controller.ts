@@ -14,7 +14,7 @@ import {
 } from '@nestjs/swagger';
 import { AuthUser, CurrentUser } from '../../common/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { LinkPlayerDto, RatingHistoryQueryDto, SearchPlayersDto } from './dto/players.dto';
+import { GlobalLeaderboardQueryDto, LinkPlayerDto, RatingHistoryQueryDto, SearchPlayersDto } from './dto/players.dto';
 import { PlayersService } from './players.service';
 
 @ApiTags('Players')
@@ -27,6 +27,13 @@ export class PlayersController {
   @ApiOperation({ summary: 'Busca jogadores por apelido, profile ID ou Steam ID' })
   @ApiOkResponse({ description: 'Ate 10 jogadores encontrados' })
   search(@Query() query: SearchPlayersDto) { return this.players.search(query.q); }
+
+  @Get('leaderboard')
+  @ApiOperation({ summary: 'Ranking global ou por pais das ladders 1v1 e Team Random Map' })
+  @ApiOkResponse({ description: 'Top 3 e pagina de jogadores ordenados por ELO' })
+  leaderboard(@Query() query: GlobalLeaderboardQueryDto) {
+    return this.players.globalLeaderboard(query);
+  }
 
   @Post('link')
   @UseGuards(JwtAuthGuard)

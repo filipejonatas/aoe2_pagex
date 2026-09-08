@@ -42,6 +42,7 @@ model AoEPlayer {
   updatedAt         DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@index([nextSyncAt], map: "aoe_players_due_sync_idx")
+  @@index([country], map: "aoe_players_country_idx")
   @@index([nickname], map: "aoe_players_nickname_idx")
   @@map("aoe_players")
 }

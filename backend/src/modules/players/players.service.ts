@@ -2,11 +2,13 @@ import { ConflictException, ForbiddenException, Injectable, Logger, NotFoundExce
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { GlobalLeaderboardQueryDto } from './dto/players.dto';
 
 @Injectable()
 export class PlayersService {
   private readonly logger = new Logger(PlayersService.name);
   private readonly profileRefreshes = new Map<string, Promise<unknown>>();
+  private readonly countriesCache = new Map<number, { expiresAt: number; countries: string[] }>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -40,6 +42,121 @@ export class PlayersService {
       orderBy: { updatedAt: 'desc' },
       take: 10,
     });
+  }
+
+  async globalLeaderboard(query: GlobalLeaderboardQueryDto) {
+    const cursor = this.decodeLeaderboardCursor(query.cursor);
+    const country = query.country?.toLowerCase();
+    const baseWhere: Prisma.PlayerRatingWhereInput = {
+      leaderboardId: query.leaderboardId,
+      rating: { not: null },
+      player: {
+        ...(country ? { country } : {}),
+        ...(query.search ? { nickname: { contains: query.search, mode: 'insensitive' } } : {}),
+      },
+    };
+    const pageWhere: Prisma.PlayerRatingWhereInput = cursor ? {
+      AND: [
+        baseWhere,
+        {
+          OR: [
+            { rating: { lt: cursor.rating } },
+            { rating: cursor.rating, id: { gt: cursor.id } },
+          ],
+        },
+      ],
+    } : baseWhere;
+    const select = {
+      id: true,
+      rating: true,
+      globalRank: true,
+      peakRating: true,
+      wins: true,
+      losses: true,
+      games: true,
+      lastSyncedAt: true,
+      player: { select: { profileId: true, nickname: true, country: true, steamId: true } },
+    } satisfies Prisma.PlayerRatingSelect;
+    const orderBy: Prisma.PlayerRatingOrderByWithRelationInput[] = [
+      { rating: 'desc' },
+      { id: 'asc' },
+    ];
+
+    const topWhere: Prisma.PlayerRatingWhereInput = {
+      leaderboardId: query.leaderboardId,
+      rating: { not: null },
+      player: country ? { country } : {},
+    };
+    const [pageRows, topRows, countries] = await Promise.all([
+      this.prisma.playerRating.findMany({ where: pageWhere, select, orderBy, take: query.limit + 1 }),
+      this.prisma.playerRating.findMany({ where: topWhere, select, orderBy, take: 3 }),
+      this.leaderboardCountries(query.leaderboardId),
+    ]);
+    const hasNext = pageRows.length > query.limit;
+    const rows = pageRows.slice(0, query.limit);
+    const startPosition = cursor?.offset ? cursor.offset + 1 : 1;
+    const toRow = (row: typeof rows[number], position: number) => ({
+      position,
+      profileId: row.player.profileId,
+      nickname: row.player.nickname,
+      platformName: row.player.steamId ? 'Steam' : undefined,
+      country: row.player.country?.toUpperCase() ?? null,
+      rating: row.rating,
+      peakRating: row.peakRating,
+      globalRank: row.globalRank && row.globalRank > 0 ? row.globalRank : null,
+      wins: row.wins,
+      losses: row.losses,
+      games: row.games,
+      delta7d: null,
+      delta30d: null,
+    });
+    const last = rows.at(-1);
+    return {
+      leaderboardId: query.leaderboardId,
+      country: country?.toUpperCase() ?? null,
+      search: query.search ?? null,
+      countries,
+      top: topRows.map((row, index) => toRow(row, index + 1)),
+      players: rows.map((row, index) => toRow(row, startPosition + index)),
+      startPosition,
+      hasNext,
+      nextCursor: hasNext && last && last.rating !== null
+        ? this.encodeLeaderboardCursor({ rating: last.rating, id: last.id, offset: startPosition + rows.length - 1 })
+        : null,
+      updatedAt: rows.reduce<Date | null>((latest, row) => !latest || row.lastSyncedAt > latest ? row.lastSyncedAt : latest, null),
+    };
+  }
+
+  private async leaderboardCountries(leaderboardId: number) {
+    const cached = this.countriesCache.get(leaderboardId);
+    if (cached && cached.expiresAt > Date.now()) return cached.countries;
+    const rows = await this.prisma.aoEPlayer.findMany({
+      where: { country: { not: null }, ratings: { some: { leaderboardId, rating: { not: null } } } },
+      distinct: ['country'],
+      select: { country: true },
+      orderBy: { country: 'asc' },
+    });
+    const countries = rows.flatMap((row) => row.country ? [row.country.toUpperCase()] : []);
+    this.countriesCache.set(leaderboardId, { expiresAt: Date.now() + 60 * 60_000, countries });
+    return countries;
+  }
+
+  private encodeLeaderboardCursor(cursor: { rating: number; id: string; offset: number }) {
+    return Buffer.from(JSON.stringify(cursor)).toString('base64url');
+  }
+
+  private decodeLeaderboardCursor(value?: string) {
+    if (!value) return null;
+    try {
+      const parsed = JSON.parse(Buffer.from(value, 'base64url').toString('utf8')) as Record<string, unknown>;
+      const rating = this.integer(parsed.rating);
+      const offset = this.integer(parsed.offset);
+      const id = this.text(parsed.id);
+      if (rating === null || offset === null || offset < 0 || !id || !/^[0-9a-f-]{36}$/i.test(id)) return null;
+      return { rating, id, offset };
+    } catch {
+      return null;
+    }
   }
 
   async resolveSteamProfile(steamId: string) {

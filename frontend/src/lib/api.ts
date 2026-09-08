@@ -18,6 +18,42 @@ export type LeagueLeaderboardResponse = {
   leaderboard: LeaderboardPlayer[];
 };
 
+export type CommunityLeaderboardResponse = {
+  leaderboardId: 3 | 4;
+  country: string | null;
+  search: string | null;
+  countries: string[];
+  top: LeaderboardPlayer[];
+  players: LeaderboardPlayer[];
+  startPosition: number;
+  hasNext: boolean;
+  nextCursor: string | null;
+  updatedAt: string | null;
+};
+
+export async function getCommunityLeaderboard(options: {
+  leaderboardId: 3 | 4;
+  country?: string;
+  search?: string;
+  cursor?: string | null;
+  limit?: number;
+}): Promise<CommunityLeaderboardResponse | null> {
+  const query = new URLSearchParams({
+    leaderboardId: String(options.leaderboardId),
+    limit: String(options.limit ?? 50),
+  });
+  if (options.country) query.set('country', options.country);
+  if (options.search) query.set('search', options.search);
+  if (options.cursor) query.set('cursor', options.cursor);
+
+  try {
+    const response = await fetch(`${baseUrl}/players/leaderboard?${query}`, { cache: 'no-store' });
+    return response.ok ? response.json() : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function getLeaderboard(slug: string, leaderboardId?: 3 | 4, token?: string | null): Promise<LeagueLeaderboardResponse | null> {
   try {
     const query = leaderboardId ? `?leaderboardId=${leaderboardId}` : '';
