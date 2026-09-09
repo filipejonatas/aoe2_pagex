@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { LeaguesService } from './leagues.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -27,7 +27,7 @@ describe('LeaguesService security', () => {
   const prisma = {
     league: { findUnique: jest.fn(), findMany: jest.fn() },
     aoEPlayer: { findUnique: jest.fn() },
-    leagueMember: { create: jest.fn(), findUnique: jest.fn(), upsert: jest.fn() },
+    leagueMember: { create: jest.fn(), delete: jest.fn(), findUnique: jest.fn(), upsert: jest.fn() },
   };
   const service = new LeaguesService(prisma as unknown as PrismaService);
 
@@ -69,5 +69,49 @@ describe('LeaguesService security', () => {
     expect(prisma.leagueMember.upsert).toHaveBeenCalledWith(expect.objectContaining({
       where: { leagueId_playerId: { leagueId: 'league-id', playerId: 'player-id' } },
     }));
+  });
+
+  it('allows the owner to add a cached player idempotently', async () => {
+    prisma.league.findUnique.mockResolvedValue({ id: 'league-id', ownerId: 'owner-id' });
+    prisma.aoEPlayer.findUnique.mockResolvedValue({ id: 'player-id', profileId: '2585521', nickname: 'Tesla_G' });
+    prisma.leagueMember.findUnique.mockResolvedValue(null);
+    prisma.leagueMember.upsert.mockResolvedValue({ id: 'membership-id' });
+
+    await expect(service.addPlayer('owner-id', 'league-id', '2585521')).resolves.toMatchObject({
+      player: { profileId: '2585521' },
+      added: true,
+    });
+    expect(prisma.leagueMember.upsert).toHaveBeenCalledWith({
+      where: { leagueId_playerId: { leagueId: 'league-id', playerId: 'player-id' } },
+      create: { leagueId: 'league-id', playerId: 'player-id' },
+      update: {},
+    });
+  });
+
+  it('blocks a non-owner from adding a player', async () => {
+    prisma.league.findUnique.mockResolvedValue({ id: 'league-id', ownerId: 'owner-id' });
+    prisma.aoEPlayer.findUnique.mockResolvedValue({ id: 'player-id', profileId: '2585521', nickname: 'Tesla_G' });
+
+    await expect(service.addPlayer('member-id', 'league-id', '2585521')).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prisma.leagueMember.upsert).not.toHaveBeenCalled();
+  });
+
+  it('allows the owner to remove another player', async () => {
+    prisma.league.findUnique.mockResolvedValue({ ownerId: 'owner-id' });
+    prisma.aoEPlayer.findUnique.mockResolvedValue({ id: 'player-id', userId: 'member-id' });
+    prisma.leagueMember.delete.mockResolvedValue({ id: 'membership-id' });
+
+    await expect(service.removePlayer('owner-id', 'league-id', '2585521')).resolves.toEqual({ removed: true });
+    expect(prisma.leagueMember.delete).toHaveBeenCalledWith({
+      where: { leagueId_playerId: { leagueId: 'league-id', playerId: 'player-id' } },
+    });
+  });
+
+  it('does not allow the league owner to remove their own player', async () => {
+    prisma.league.findUnique.mockResolvedValue({ ownerId: 'owner-id' });
+    prisma.aoEPlayer.findUnique.mockResolvedValue({ id: 'owner-player-id', userId: 'owner-id' });
+
+    await expect(service.removePlayer('owner-id', 'league-id', '100')).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prisma.leagueMember.delete).not.toHaveBeenCalled();
   });
 });

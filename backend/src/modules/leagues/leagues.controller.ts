@@ -14,7 +14,7 @@ import {
 import { AuthUser, CurrentUser } from '../../common/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
-import { CreateLeagueDto, JoinLeagueDto, LeagueLeaderboardQueryDto } from './dto/leagues.dto';
+import { AddLeaguePlayerDto, CreateLeagueDto, JoinLeagueDto, LeagueLeaderboardQueryDto } from './dto/leagues.dto';
 import { LeaguesService } from './leagues.service';
 
 @ApiTags('Leagues')
@@ -81,6 +81,21 @@ export class LeaguesController {
     return this.leagues.join(user.sub, leagueId, dto.inviteCode);
   }
 
+  @Post(':leagueId/members') @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Adiciona um jogador ao ranking da liga' })
+  @ApiParam({ name: 'leagueId', description: 'UUID da liga' })
+  @ApiCreatedResponse({ description: 'Jogador adicionado ou participacao existente' })
+  @ApiForbiddenResponse({ description: 'Somente o proprietario pode adicionar jogadores' })
+  @ApiNotFoundResponse({ description: 'Liga ou jogador nao encontrado' })
+  addPlayer(
+    @CurrentUser() user: AuthUser,
+    @Param('leagueId') leagueId: string,
+    @Body() dto: AddLeaguePlayerDto,
+  ) {
+    return this.leagues.addPlayer(user.sub, leagueId, dto.profileId);
+  }
+
   @Delete(':leagueId/members/me') @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Remove o usuario autenticado de uma liga' })
@@ -90,4 +105,20 @@ export class LeaguesController {
   @ApiNotFoundResponse({ description: 'Liga ou participacao nao encontrada' })
   @ApiUnauthorizedResponse({ description: 'Token ausente ou invalido' })
   leave(@CurrentUser() user: AuthUser, @Param('leagueId') leagueId: string) { return this.leagues.leave(user.sub, leagueId); }
+
+  @Delete(':leagueId/members/:profileId') @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Remove um jogador do ranking da liga' })
+  @ApiParam({ name: 'leagueId', description: 'UUID da liga' })
+  @ApiParam({ name: 'profileId', description: 'Profile ID oficial do jogador' })
+  @ApiOkResponse({ description: 'Jogador removido da liga' })
+  @ApiForbiddenResponse({ description: 'Somente o proprietario pode remover jogadores, e ele nao pode remover a si mesmo' })
+  @ApiNotFoundResponse({ description: 'Liga, jogador ou participacao nao encontrada' })
+  removePlayer(
+    @CurrentUser() user: AuthUser,
+    @Param('leagueId') leagueId: string,
+    @Param('profileId') profileId: string,
+  ) {
+    return this.leagues.removePlayer(user.sub, leagueId, profileId);
+  }
 }

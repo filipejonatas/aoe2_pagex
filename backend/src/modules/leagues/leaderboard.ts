@@ -6,6 +6,7 @@ export type LeaderboardSeed = {
   rating: number | null;
   globalRank: number | null;
   peakRating: number | null;
+  isLeagueOwner?: boolean;
   joinedAt: Date;
   snapshots: { rating: number | null; recordedAt: Date }[];
 };
@@ -38,6 +39,7 @@ export function buildLeaderboard(players: LeaderboardSeed[]) {
         rating: player.rating,
         globalRank: player.globalRank,
         peakRating: player.peakRating,
+        isLeagueOwner: player.isLeagueOwner ?? false,
         delta24h: delta(1),
         delta7d: delta(7),
         delta30d: delta(30),

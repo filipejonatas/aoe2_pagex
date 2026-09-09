@@ -1,4 +1,5 @@
 import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateLeagueDto } from './dto/leagues.dto';
@@ -101,6 +102,48 @@ export class LeaguesService {
     return this.addMember(userId, league.id, player.id);
   }
 
+  async addPlayer(ownerId: string, leagueId: string, profileId: string) {
+    const [league, player] = await Promise.all([
+      this.prisma.league.findUnique({ where: { id: leagueId }, select: { id: true, ownerId: true } }),
+      this.prisma.aoEPlayer.findUnique({ where: { profileId }, select: { id: true, profileId: true, nickname: true } }),
+    ]);
+    if (!league) throw new NotFoundException('League not found');
+    if (league.ownerId !== ownerId) throw new ForbiddenException('Only the league owner can add players');
+    if (!player) throw new NotFoundException('Player not found. Search for the player first');
+
+    const key = { leagueId_playerId: { leagueId, playerId: player.id } };
+    const existing = await this.prisma.leagueMember.findUnique({ where: key, select: { id: true } });
+    await this.prisma.leagueMember.upsert({
+      where: key,
+      create: { leagueId, playerId: player.id },
+      update: {},
+    });
+    return { player, added: !existing };
+  }
+
+  async removePlayer(ownerId: string, leagueId: string, profileId: string) {
+    const [league, player] = await Promise.all([
+      this.prisma.league.findUnique({ where: { id: leagueId }, select: { ownerId: true } }),
+      this.prisma.aoEPlayer.findUnique({ where: { profileId }, select: { id: true, userId: true } }),
+    ]);
+    if (!league) throw new NotFoundException('League not found');
+    if (league.ownerId !== ownerId) throw new ForbiddenException('Only the league owner can remove players');
+    if (!player) throw new NotFoundException('Player not found');
+    if (player.userId === ownerId) throw new ForbiddenException('The league owner cannot be removed');
+
+    try {
+      await this.prisma.leagueMember.delete({
+        where: { leagueId_playerId: { leagueId, playerId: player.id } },
+      });
+      return { removed: true };
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+        throw new NotFoundException('Player is not a member of this league');
+      }
+      throw error;
+    }
+  }
+
   async leave(userId: string, leagueId: string) {
     const league = await this.prisma.league.findUnique({ where: { id: leagueId } });
     if (!league) throw new NotFoundException('League not found');
@@ -140,6 +183,7 @@ export class LeaguesService {
         rating: rating?.rating ?? null,
         globalRank: rating?.globalRank && rating.globalRank > 0 ? rating.globalRank : null,
         peakRating: rating?.peakRating ?? null,
+        isLeagueOwner: member.player.userId === league.ownerId,
         joinedAt: member.joinedAt,
         snapshots: member.player.ratingSnapshots.filter((item) => item.leaderboardId === selectedLeaderboardId),
       };

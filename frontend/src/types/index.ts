@@ -10,6 +10,7 @@ export type LeaderboardPlayer = {
   wins?: number | null;
   losses?: number | null;
   games?: number | null;
+  isLeagueOwner?: boolean;
   delta7d: number | null;
   delta30d: number | null;
 };

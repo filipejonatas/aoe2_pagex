@@ -221,6 +221,10 @@ main { min-height: calc(100vh - 134px); }
 .rank-badge--3 { color: #d08a51; background: rgba(174,116,67,.1); border-color: rgba(174,116,67,.24); }
 .rank-plain { color: var(--text-dim); }
 .row-link { color: var(--text-dim); display: inline-flex; }
+.row-actions { display: inline-flex; align-items: center; justify-content: flex-end; gap: 9px; }
+.row-remove { width: 30px; height: 30px; display: inline-grid; place-items: center; padding: 0; border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; color: var(--text-dim); cursor: pointer; }
+.row-remove:hover { color: var(--danger); border-color: rgba(216,111,114,.3); background: rgba(216,111,114,.06); }
+.row-remove:disabled { opacity: .45; cursor: wait; }
 .empty-state, .large-empty { text-align: center; padding: 64px 24px; display: flex; flex-direction: column; align-items: center; }
 .empty-state__icon, .round-icon, .auth-mark { width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; color: var(--gold-bright); background: rgba(196,138,44,.08); border: 1px solid var(--border-gold); }
 .empty-state h3, .large-empty h2 { font: 600 20px var(--font-display); margin: 16px 0 4px; }
@@ -245,6 +249,16 @@ main { min-height: calc(100vh - 134px); }
   .ladder-switch button:hover { color: var(--text); }
   .ladder-switch button.active { color: #17130d; background: var(--gold); }
 .league-action-panel { padding: 24px; margin: -12px 0 24px; }
+.league-player-manager { padding: 24px; margin: -12px 0 24px; }
+.league-player-search { min-height: 48px; display: flex; align-items: center; gap: 10px; margin-top: 16px; padding: 4px 4px 4px 13px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--bg-raised); color: var(--text-dim); }
+.league-player-search:focus-within { border-color: var(--border-gold); }
+.league-player-search input { min-width: 0; flex: 1; height: 38px; border: 0; outline: 0; background: transparent; color: var(--text); }
+.league-player-results { margin-top: 18px; border-top: 1px solid var(--border); }
+.league-player-result { display: flex; align-items: center; gap: 12px; padding: 15px 0; border-bottom: 1px solid var(--border); }
+.league-player-result__identity { min-width: 0; display: grid; gap: 4px; }
+.league-player-result__identity strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.league-player-result__identity small, .steam-unavailable { color: var(--text-dim); font-size: 11px; }
+.league-player-result__actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 .league-action-panel__heading { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 20px; }
 .league-action-panel__heading h2 { font: 600 25px/1.2 var(--font-display); margin: 6px 0 0; }
 .league-action-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: end; }
@@ -402,6 +416,12 @@ main { min-height: calc(100vh - 134px); }
     .league-card__actions { grid-template-columns: 1fr; }
     .league-card__actions > :only-child { grid-column: auto; }
   .league-action-form { grid-template-columns: 1fr; }
+  .league-player-search { align-items: stretch; flex-wrap: wrap; }
+  .league-player-search input { flex-basis: calc(100% - 32px); }
+  .league-player-search .button { width: 100%; }
+  .league-player-result { align-items: flex-start; flex-wrap: wrap; }
+  .league-player-result__identity { flex: 1; }
+  .league-player-result__actions { width: 100%; margin-left: 47px; flex-wrap: wrap; }
   .league-action-form__wide, .form-help { grid-column: auto; }
   .league-feedback { align-items: flex-start; flex-direction: column; gap: 14px; }
   .leaderboard-filters { flex-wrap: wrap; }

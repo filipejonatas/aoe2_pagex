@@ -1,5 +1,5 @@
-import { Type } from 'class-transformer';
-import { IsEnum, IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import { IsEnum, IsIn, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
 import { LeagueVisibility } from '@prisma/client';
 
 export class CreateLeagueDto {
@@ -11,6 +11,14 @@ export class CreateLeagueDto {
 
 export class JoinLeagueDto {
   @IsString() @MinLength(6) inviteCode!: string;
+}
+
+export class AddLeaguePlayerDto {
+  @Transform(({ value }) => String(value).trim())
+  @IsString()
+  @Matches(/^\d+$/)
+  @MaxLength(20)
+  profileId!: string;
 }
 
 export class LeagueLeaderboardQueryDto {
