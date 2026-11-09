@@ -71,6 +71,7 @@ model PlayerRating {
   games         Int?
   lastMatchAt   DateTime? @map("last_match_at") @db.Timestamptz(3)
   lastSyncedAt  DateTime  @default(now()) @map("last_synced_at") @db.Timestamptz(3)
+  lastSnapshotAt DateTime? @map("last_snapshot_at") @db.Timestamptz(3)
   player        AoEPlayer @relation(fields: [playerId], references: [id], onDelete: Cascade)
 
   @@unique([playerId, leaderboardId])

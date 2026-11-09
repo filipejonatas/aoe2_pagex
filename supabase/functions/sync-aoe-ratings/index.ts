@@ -12,6 +12,7 @@ const BACKFILL_PAGES_PER_RUN = Math.min(10, Math.max(1, Number(Deno.env.get("AOE
 const AOE_REQUEST_INTERVAL_MS = Math.max(250, Number(Deno.env.get("AOE_REQUEST_INTERVAL_MS")) || 350);
 const SYNC_INTERVAL_MS = 60 * 60 * 1_000;
 const SNAPSHOT_INTERVAL_MS = 24 * 60 * 60 * 1_000;
+const SNAPSHOT_FIELDS = ["rating", "wins", "losses", "games"] as const;
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -130,27 +131,21 @@ async function persistRatings(
 
   const createSnapshots = options.createSnapshots ?? true;
   let previousByPlayer = new Map<string, Record<string, unknown>>();
-  let recentlySnapshotted = new Set<string>();
   if (createSnapshots) {
     const { data: previous, error: previousError } = await supabase
       .from("player_ratings")
-      .select("player_id,leaderboard_id,rating,global_rank,wins,losses,games,last_synced_at")
+      .select("player_id,leaderboard_id,rating,wins,losses,games,last_snapshot_at")
       .in("player_id", playerIds);
     if (previousError) throw previousError;
     previousByPlayer = new Map(previous.map((rating) => [`${rating.player_id}:${rating.leaderboard_id}`, rating]));
-    const snapshotCutoff = new Date(now.getTime() - SNAPSHOT_INTERVAL_MS).toISOString();
-    const { data: recentSnapshots, error: snapshotsReadError } = await supabase
-      .from("rating_snapshots")
-      .select("player_id,leaderboard_id")
-      .gte("recorded_at", snapshotCutoff)
-      .in("player_id", playerIds);
-    if (snapshotsReadError) throw snapshotsReadError;
-    recentlySnapshotted = new Set(recentSnapshots.map((snapshot) => `${snapshot.player_id}:${snapshot.leaderboard_id}`));
   }
 
+  const snapshotCutoff = now.getTime() - SNAPSHOT_INTERVAL_MS;
+  const snapshotKeys = new Set<string>();
   const ratings = uniqueRatings.flatMap((row) => {
     const playerId = playerIdByProfile.get(row.profileId);
-    return playerId ? [{
+    if (!playerId) return [];
+    const rating = {
       player_id: playerId,
       leaderboard_id: row.leaderboardId,
       rating: row.rating,
@@ -161,8 +156,45 @@ async function persistRatings(
       games: row.games,
       last_match_at: row.lastMatchAt,
       last_synced_at: now.toISOString(),
-    }] : [];
+    };
+    if (!createSnapshots) return [rating];
+
+    // A new snapshot is written when the player actually played (rating or
+    // record changed) or once per SNAPSHOT_INTERVAL as a daily heartbeat.
+    // global_rank alone is ignored: it moves whenever other players play.
+    const key = `${playerId}:${row.leaderboardId}`;
+    const old = previousByPlayer.get(key);
+    const lastSnapshotAt = old?.last_snapshot_at ? Date.parse(String(old.last_snapshot_at)) : NaN;
+    const changed = !old || SNAPSHOT_FIELDS.some((field) => old[field] !== rating[field]);
+    const stale = !Number.isFinite(lastSnapshotAt) || lastSnapshotAt <= snapshotCutoff;
+    if (changed || stale) snapshotKeys.add(key);
+    // Every row carries last_snapshot_at so a bulk upsert never nulls it out.
+    return [{
+      ...rating,
+      last_snapshot_at: snapshotKeys.has(key)
+        ? now.toISOString()
+        : (old?.last_snapshot_at as string | null | undefined) ?? null,
+    }];
   });
+
+  const snapshots = ratings
+    .filter((rating) => snapshotKeys.has(`${rating.player_id}:${rating.leaderboard_id}`))
+    .map((rating) => ({
+      player_id: rating.player_id,
+      leaderboard_id: rating.leaderboard_id,
+      rating: rating.rating,
+      global_rank: rating.global_rank,
+      wins: rating.wins,
+      losses: rating.losses,
+      games: rating.games,
+      source: "WORLDS_EDGE",
+      recorded_at: now.toISOString(),
+    }));
+  if (snapshots.length) {
+    const { error: snapshotError } = await supabase.from("rating_snapshots").insert(snapshots);
+    if (snapshotError) throw snapshotError;
+  }
+
   const { error: ratingError } = await supabase.from("player_ratings").upsert(ratings, {
     onConflict: "player_id,leaderboard_id",
   });
@@ -179,28 +211,6 @@ async function persistRatings(
   );
   if (syncStatusError) throw syncStatusError;
 
-  const snapshots = createSnapshots ? ratings.filter((rating) => {
-    const key = `${rating.player_id}:${rating.leaderboard_id}`;
-    const old = previousByPlayer.get(key);
-    if (!old) return true;
-    const changed = ["rating", "global_rank", "wins", "losses", "games"]
-      .some((field) => old[field] !== rating[field]);
-    return changed || !recentlySnapshotted.has(key);
-  }).map((rating) => ({
-    player_id: rating.player_id,
-    leaderboard_id: rating.leaderboard_id,
-    rating: rating.rating,
-    global_rank: rating.global_rank,
-    wins: rating.wins,
-    losses: rating.losses,
-    games: rating.games,
-    source: "WORLDS_EDGE",
-    recorded_at: now.toISOString(),
-  })) : [];
-  if (snapshots.length) {
-    const { error: snapshotError } = await supabase.from("rating_snapshots").insert(snapshots);
-    if (snapshotError) throw snapshotError;
-  }
   return { players: ratings.length, snapshots: snapshots.length };
 }
 
