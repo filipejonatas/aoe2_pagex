@@ -774,8 +774,10 @@ Evitar duplicação excessiva.
 Criar snapshot quando:
 
 ```text
-rating mudou
+rating, wins, losses ou games mudaram
 ```
+
+Mudanças apenas em `global_rank` não geram snapshot (o rank muda quando outros jogadores jogam); ele fica registrado no snapshot diário.
 
 OU:
 

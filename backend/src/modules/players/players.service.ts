@@ -245,11 +245,40 @@ export class PlayersService {
         }];
       });
     const trackedLeaderboards = [3, 4];
+    // The sync worker decides whether to snapshot by comparing against
+    // player_ratings, so a lookup that changes tracked fields must record the
+    // snapshot itself or that change would never reach the history.
+    const previous = await this.prisma.playerRating.findMany({
+      where: { playerId: player.id },
+      select: { leaderboardId: true, rating: true, wins: true, losses: true, games: true },
+    });
+    const previousByLeaderboard = new Map(previous.map((item) => [item.leaderboardId, item]));
+    const changed = ratings.filter((rating) => {
+      const old = previousByLeaderboard.get(rating.leaderboardId);
+      return !old || old.rating !== rating.rating || old.wins !== rating.wins
+        || old.losses !== rating.losses || old.games !== rating.games;
+    });
+    const changedLeaderboards = new Set(changed.map((rating) => rating.leaderboardId));
     await this.prisma.$transaction([
-      ...ratings.map((rating) => this.prisma.playerRating.upsert({
-        where: { playerId_leaderboardId: { playerId: rating.playerId, leaderboardId: rating.leaderboardId } },
-        create: rating,
-        update: rating,
+      ...ratings.map((rating) => {
+        const data = changedLeaderboards.has(rating.leaderboardId) ? { ...rating, lastSnapshotAt: now } : rating;
+        return this.prisma.playerRating.upsert({
+          where: { playerId_leaderboardId: { playerId: rating.playerId, leaderboardId: rating.leaderboardId } },
+          create: data,
+          update: data,
+        });
+      }),
+      ...changed.map((rating) => this.prisma.ratingSnapshot.create({
+        data: {
+          playerId: rating.playerId,
+          leaderboardId: rating.leaderboardId,
+          rating: rating.rating,
+          globalRank: rating.globalRank,
+          wins: rating.wins,
+          losses: rating.losses,
+          games: rating.games,
+          recordedAt: now,
+        },
       })),
       ...trackedLeaderboards.map((leaderboardId) => this.prisma.playerLadderSync.upsert({
         where: { playerId_leaderboardId: { playerId: player.id, leaderboardId } },
